@@ -1,0 +1,7 @@
+.dev.env
+items.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.claude/
