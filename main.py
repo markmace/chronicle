@@ -181,6 +181,7 @@ def _for_display(item: dict) -> dict:
         "display_start": _fmt(item.get("start")),
         "display_end": _fmt(item.get("end")),
         "display_completed": _fmt(item.get("completed_at")),
+        "display_updated": _fmt(item.get("updated_at")),
     }
 
 
@@ -456,6 +457,22 @@ async def api_reorder_note(token: str, item_id: str, body: ReorderBody):
         raise HTTPException(status_code=422, detail="direction must be 'up' or 'down'.")
     try:
         await items_service.reorder_note(item_id, body.direction)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True}
+
+
+class MoveBody(BaseModel):
+    after_id: str | None = None
+
+
+@app.post("/api/{token}/items/{item_id}/move")
+async def api_move_note(token: str, item_id: str, body: MoveBody):
+    """Move a note to an arbitrary position — used by the web page's
+    drag-and-drop, which can jump several positions in one gesture."""
+    _require_token(token)
+    try:
+        await items_service.move_note(item_id, body.after_id)
     except models.ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True}

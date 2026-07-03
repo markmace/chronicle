@@ -100,46 +100,40 @@
   <section>
     <div class="section-label">notes</div>
     {% if notes %}
-    {% for item in notes %}
-    <div class="item kind-note">
-      <div class="dot"></div>
-      <div class="item-body">
-        <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
-        {% if item.content %}
-          {% if item.content|length > 200 %}
-          <details class="note-toggle">
-            <summary><span class="item-content preview-text">{{ item.content|truncate(200) }}</span><span class="toggle-word"></span></summary>
-            <span class="item-content full-text">{{ item.content }}</span>
-          </details>
-          {% else %}
-          <div class="item-content">{{ item.content }}</div>
+    <div id="notes-list" data-token="{{ token }}">
+      {% for item in notes %}
+      <div class="item kind-note" data-id="{{ item.id }}">
+        <button type="button" class="drag-handle" aria-label="Drag to reorder, or focus and press the arrow keys">
+          <span class="grip-dot"></span><span class="grip-dot"></span>
+          <span class="grip-dot"></span><span class="grip-dot"></span>
+          <span class="grip-dot"></span><span class="grip-dot"></span>
+        </button>
+        <div class="dot"></div>
+        <div class="item-body">
+          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+          {% if item.content %}
+            {% if item.content|length > 200 %}
+            <details class="note-toggle">
+              <summary><span class="item-content preview-text">{{ item.content|truncate(200) }}</span><span class="toggle-word"></span></summary>
+              <span class="item-content full-text">{{ item.content }}</span>
+            </details>
+            {% else %}
+            <div class="item-content">{{ item.content }}</div>
+            {% endif %}
           {% endif %}
-        {% endif %}
-        {% if item.tags %}
-        <div class="item-meta">
-          {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+          <div class="item-meta">
+            <span class="edited-date">edited {{ item.display_updated }}</span>
+            {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+          </div>
         </div>
-        {% endif %}
+        <div class="item-actions">
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
+            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
+          </form>
+        </div>
       </div>
-      <div class="item-actions">
-        {% if not loop.first %}
-        <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
-          <input type="hidden" name="direction" value="up">
-          <button type="submit" class="icon-btn" aria-label="Move up">&uarr;</button>
-        </form>
-        {% endif %}
-        {% if not loop.last %}
-        <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
-          <input type="hidden" name="direction" value="down">
-          <button type="submit" class="icon-btn" aria-label="Move down">&darr;</button>
-        </form>
-        {% endif %}
-        <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
-          <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
-        </form>
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
     {% else %}
     <div class="empty">No notes yet.</div>
     {% endif %}
@@ -186,6 +180,123 @@
     document.getElementById('today').textContent = new Date().toLocaleDateString(undefined, {
       weekday: 'short', month: 'short', day: 'numeric'
     }).toLowerCase();
+  </script>
+
+  <script>
+    (function () {
+      const list = document.getElementById('notes-list');
+      if (!list) return;
+      const token = list.dataset.token;
+
+      function rows() {
+        return Array.from(list.querySelectorAll(':scope > .item[data-id]'));
+      }
+
+      async function move(itemId, afterId) {
+        await fetch(`/api/${token}/items/${itemId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ after_id: afterId }),
+        });
+      }
+
+      let dragEl = null;
+      let placeholder = null;
+      let grabOffsetY = 0;
+
+      function startDrag(row, clientY) {
+        dragEl = row;
+        const rect = row.getBoundingClientRect();
+        const listRect = list.getBoundingClientRect();
+        grabOffsetY = clientY - rect.top;
+
+        placeholder = document.createElement('div');
+        placeholder.className = 'drag-placeholder';
+        placeholder.style.height = rect.height + 'px';
+        row.parentNode.insertBefore(placeholder, row.nextSibling);
+
+        row.style.width = rect.width + 'px';
+        row.style.position = 'absolute';
+        row.style.top = (rect.top - listRect.top) + 'px';
+        row.style.left = '0px';
+        row.classList.add('dragging');
+      }
+
+      function moveDrag(clientY) {
+        if (!dragEl) return;
+        const listRect = list.getBoundingClientRect();
+        dragEl.style.top = (clientY - listRect.top - grabOffsetY) + 'px';
+
+        for (const row of rows().filter((r) => r !== dragEl)) {
+          const rect = row.getBoundingClientRect();
+          if (clientY < rect.top + rect.height / 2) {
+            list.insertBefore(placeholder, row);
+            return;
+          }
+        }
+        list.appendChild(placeholder);
+      }
+
+      async function endDrag() {
+        if (!dragEl) return;
+        list.insertBefore(dragEl, placeholder);
+        placeholder.remove();
+        dragEl.classList.remove('dragging');
+        dragEl.style.position = '';
+        dragEl.style.top = '';
+        dragEl.style.left = '';
+        dragEl.style.width = '';
+
+        const ordered = rows();
+        const idx = ordered.indexOf(dragEl);
+        const afterId = idx > 0 ? ordered[idx - 1].dataset.id : null;
+        const itemId = dragEl.dataset.id;
+        dragEl = null;
+
+        await move(itemId, afterId);
+        location.reload();
+      }
+
+      list.addEventListener('pointerdown', (e) => {
+        const handle = e.target.closest('.drag-handle');
+        if (!handle) return;
+        const row = handle.closest('.item');
+        if (!row) return;
+        e.preventDefault();
+        startDrag(row, e.clientY);
+
+        const onMove = (ev) => moveDrag(ev.clientY);
+        const onUp = () => {
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          endDrag();
+        };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+      });
+
+      list.addEventListener('keydown', async (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        const handle = e.target.closest('.drag-handle');
+        if (!handle) return;
+        const row = handle.closest('.item');
+        e.preventDefault();
+
+        const ordered = rows();
+        const idx = ordered.indexOf(row);
+        const targetIdx = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= ordered.length) return;
+
+        const reordered = ordered.slice();
+        reordered.splice(idx, 1);
+        reordered.splice(targetIdx, 0, row);
+        const newIdx = reordered.indexOf(row);
+        const afterId = newIdx > 0 ? reordered[newIdx - 1].dataset.id : null;
+
+        await move(row.dataset.id, afterId);
+        location.reload();
+      });
+    })();
   </script>
 </body>
 </html>

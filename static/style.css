@@ -127,14 +127,55 @@ section { margin-bottom: 30px; }
 /* Item rows — flat ledger list, hairline-divided, no card chrome         */
 /* ---------------------------------------------------------------------- */
 
+#notes-list { position: relative; }
 .item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   padding: 13px 0;
   border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
 }
 .item:last-child { border-bottom: none; }
+.item.dragging {
+  z-index: 10;
+  box-shadow: var(--shadow);
+  border-radius: 6px;
+  border-bottom: none;
+  opacity: 0.97;
+}
+.drag-placeholder {
+  border: 1.5px dashed var(--hairline-strong);
+  border-radius: 6px;
+  margin: 6px 0;
+  box-sizing: border-box;
+}
+.drag-handle {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 3px;
+  width: 18px;
+  height: 26px;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+  align-content: center;
+  justify-items: center;
+}
+.drag-handle:active { cursor: grabbing; }
+.grip-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--hairline-strong);
+}
+.drag-handle:hover .grip-dot, .drag-handle:focus-visible .grip-dot { background: var(--ink-soft); }
+.edited-date { color: var(--ink-soft); }
 
 .dot {
   width: 9px;

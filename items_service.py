@@ -2,6 +2,8 @@
 live, so the MCP tools, the HTML view routes, and the JSON API all do the same
 thing instead of each re-implementing their own mutator closures."""
 
+import time
+
 import models
 import storage
 
@@ -181,3 +183,49 @@ async def reorder_note(item_id: str, direction: str) -> None:
         return new_items, None
 
     await storage.mutate(_mutator, message=f"Reorder note {item_id} ({direction})")
+
+
+async def move_note(item_id: str, after_id: str | None) -> None:
+    """Move a note to display immediately after `after_id` among active notes,
+    or to the very top if `after_id` is None. Computes a new `order` strictly
+    between the two neighbors it ends up between, so only the moved item's
+    order value changes -- no renumbering the rest of the list. Used for
+    drag-and-drop, which can jump a note multiple positions in one gesture
+    (unlike reorder_note's single-step swap). May raise
+    models.ItemNotFoundError for either id."""
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], None]:
+        models.find(items, item_id)  # raises if item_id doesn't exist
+        notes = [
+            i for i in items
+            if not i.get("completed_at") and models.item_kind(i) == "note" and i["id"] != item_id
+        ]
+        notes.sort(key=models.sort_order, reverse=True)
+
+        if after_id is None:
+            target_index = 0
+        else:
+            idx = next((i for i, n in enumerate(notes) if n["id"] == after_id), None)
+            if idx is None:
+                raise models.ItemNotFoundError(f"No note with id '{after_id}'.")
+            target_index = idx + 1
+
+        neighbor_above = notes[target_index - 1] if target_index > 0 else None
+        neighbor_below = notes[target_index] if target_index < len(notes) else None
+
+        if neighbor_above and neighbor_below:
+            new_order = (models.sort_order(neighbor_above) + models.sort_order(neighbor_below)) / 2
+        elif neighbor_above:
+            new_order = models.sort_order(neighbor_above) - 1
+        elif neighbor_below:
+            new_order = models.sort_order(neighbor_below) + 1
+        else:
+            new_order = time.time()
+
+        new_items = [
+            {**i, "order": new_order} if i["id"] == item_id else i
+            for i in items
+        ]
+        return new_items, None
+
+    await storage.mutate(_mutator, message=f"Move note {item_id}")
