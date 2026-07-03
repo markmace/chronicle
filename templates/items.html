@@ -11,6 +11,7 @@
 <title>Chronicle</title>
 <style>
   :root {
+    color-scheme: light dark;
     --bg: #f5f5f7;
     --card: #ffffff;
     --text: #1c1c1e;
@@ -20,6 +21,7 @@
     --accent-reminder: #f59e0b;
     --accent-note: #8a8a8e;
     --pill-bg: rgba(60, 60, 67, 0.08);
+    --danger: #ef4444;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -44,6 +46,7 @@
     max-width: 560px;
     margin: 0 auto;
   }
+  form { margin: 0; }
   header {
     padding: 4px 4px 20px;
   }
@@ -73,6 +76,56 @@
     overflow: hidden;
     border: 1px solid var(--border);
   }
+  .error-banner {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .add-form {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .field {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 15px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+  }
+  .field-title { font-weight: 500; }
+  textarea.field { resize: vertical; min-height: 44px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field-label .field { min-width: 0; }
+  .hint { font-size: 12px; color: var(--muted); margin: 0; }
+  .add-btn {
+    align-self: flex-end;
+    padding: 9px 22px;
+    border-radius: 20px;
+    border: none;
+    background: var(--accent-event);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .add-btn:active { opacity: 0.8; }
   .item {
     display: flex;
     align-items: flex-start;
@@ -111,10 +164,7 @@
     align-items: center;
     margin-top: 6px;
   }
-  .when {
-    font-size: 13px;
-    color: var(--muted);
-  }
+  .when { font-size: 13px; color: var(--muted); }
   .tag {
     font-size: 12px;
     font-weight: 500;
@@ -123,6 +173,29 @@
     border-radius: 20px;
     padding: 2px 9px;
   }
+  .item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .icon-btn:active { opacity: 0.6; }
+  .icon-btn.del { color: var(--danger); }
   .empty {
     color: var(--muted);
     font-size: 14px;
@@ -153,8 +226,28 @@
 <body>
   <header>
     <h1>Chronicle</h1>
-    <p>Read-only — talk to Claude to add or change anything.</p>
+    <p>Add things here, or just ask Claude.</p>
   </header>
+
+  <section>
+    {% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+    <form class="add-form card-list" method="post" action="/view/{{ token }}/create" id="add-form">
+      <input type="hidden" name="tz_offset_minutes" id="tz_offset_minutes" value="0">
+      <input type="text" name="title" placeholder="Title" required class="field field-title">
+      <textarea name="content" placeholder="Notes (optional)" class="field" rows="2"></textarea>
+      <input type="text" name="tags" placeholder="Tags, comma separated" class="field">
+      <div class="field-row">
+        <label class="field-label">Starts
+          <input type="datetime-local" name="start" class="field">
+        </label>
+        <label class="field-label">Ends
+          <input type="datetime-local" name="end" class="field">
+        </label>
+      </div>
+      <p class="hint">Leave both blank for a note, fill Starts only for a reminder, fill both for an event.</p>
+      <button type="submit" class="add-btn">Add</button>
+    </form>
+  </section>
 
   <section>
     <h2>Upcoming</h2>
@@ -173,6 +266,14 @@
             {% endif %}
             {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
           </div>
+        </div>
+        <div class="item-actions">
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/complete">
+            <button type="submit" class="icon-btn" aria-label="Mark done">&#10003;</button>
+          </form>
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
+            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
+          </form>
         </div>
       </div>
       {% endfor %}
@@ -198,6 +299,11 @@
           </div>
           {% endif %}
         </div>
+        <div class="item-actions">
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
+            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
+          </form>
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -220,6 +326,14 @@
             {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
           </div>
         </div>
+        <div class="item-actions">
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/uncomplete">
+            <button type="submit" class="icon-btn" aria-label="Mark not done">&#8635;</button>
+          </form>
+          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
+            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
+          </form>
+        </div>
       </div>
       {% endfor %}
     </details>
@@ -227,5 +341,9 @@
   {% endif %}
 
   <footer>Chronicle</footer>
+
+  <script>
+    document.getElementById('tz_offset_minutes').value = new Date().getTimezoneOffset();
+  </script>
 </body>
 </html>

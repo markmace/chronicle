@@ -19,8 +19,9 @@ one coherent surface for Claude to read, write, and reason over.
 
 This is the *skateboard*: the smallest end-to-end version that proves the loop of
 Claude and me working on the same items together. Single-user, MCP as the primary
-interface, plus one minimal read-only page to glance at things. No editing UI, no
-mobile app, no calendar view yet — those are car parts for later.
+interface, plus one simple mobile-first page for quick add/complete/delete. No
+calendar view, no editing existing items in the page (that's still a Claude job) —
+those are car parts for later.
 
 ## How it works
 
@@ -29,11 +30,11 @@ flowchart LR
     G["GitHub — chronicle-data<br/>items.json"]
     M["Chronicle server<br/>on Fly.io"]
     C["claude.ai"]
-    V["/view — read-only page"]
+    V["/view — mobile-first page"]
 
     M <-->|REST API| G
     M <-->|MCP| C
-    M --> V
+    M <--> V
 ```
 
 All items live as one JSON array (`items.json`) in a private GitHub repo — free
@@ -51,11 +52,14 @@ git commit.
 | `complete_item(id)` / `uncomplete_item(id)` | Toggle done state, idempotent |
 | `delete_item(id)` | Destructive — Claude always confirms first |
 
-### Read-only page
+### The `/view` page
 
 `GET /view/<MCP_TOKEN>` — a mobile-first page grouping items into Upcoming / Notes /
-Completed. No editing controls; all writes go through Claude. Add it to your iPhone
-home screen (Share → Add to Home Screen) for an app-like, chrome-free view.
+Completed, with a quick-add form and per-item complete/uncomplete/delete. No
+build tooling, no JS framework — plain forms POSTing back to the same server.
+Editing an existing item's fields is still a Claude job (`update_item`). Add it to
+your iPhone home screen (Share → Add to Home Screen) for an app-like, chrome-free
+view.
 
 ---
 

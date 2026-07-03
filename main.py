@@ -2,12 +2,13 @@
 
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AsyncIterator
+from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import models
@@ -120,12 +121,28 @@ def _for_display(item: dict) -> dict:
     }
 
 
-@app.get("/view/{token}", response_class=HTMLResponse)
-async def view_items(request: Request, token: str):
-    """Read-only mobile-first view of all items. Same trust boundary as /mcp — the
-    URL path token — so there's no separate credential to manage."""
+def _require_token(token: str) -> None:
     if not safe_equal(token, MCP_TOKEN):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
+    """Convert a <input type=datetime-local> value (naive, in the browser's local
+    time) to a UTC ISO string. tz_offset_minutes is JS's Date.getTimezoneOffset()
+    — minutes to ADD to local time to reach UTC."""
+    if not value:
+        return None
+    naive = datetime.fromisoformat(value)
+    utc = naive + timedelta(minutes=tz_offset_minutes)
+    return utc.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@app.get("/view/{token}", response_class=HTMLResponse)
+async def view_items(request: Request, token: str, error: str | None = None):
+    """Mobile-first view of all items, with a quick-add form and per-item
+    complete/uncomplete/delete actions. Same trust boundary as /mcp — the URL path
+    token — so there's no separate credential to manage."""
+    _require_token(token)
 
     items, _ = await storage.read_items()
 
@@ -144,8 +161,92 @@ async def view_items(request: Request, token: str):
         request,
         "items.html",
         {
+            "token": token,
+            "error": error,
             "upcoming": [_for_display(i) for i in upcoming],
             "notes": [_for_display(i) for i in notes],
             "completed": [_for_display(i) for i in completed],
         },
     )
+
+
+@app.post("/view/{token}/create")
+async def create_item_form(
+    token: str,
+    title: str = Form(...),
+    content: str = Form(""),
+    tags: str = Form(""),
+    start: str = Form(""),
+    end: str = Form(""),
+    tz_offset_minutes: int = Form(0),
+):
+    _require_token(token)
+
+    try:
+        item = models.new_item(
+            title,
+            content=content,
+            tags=[t for t in tags.split(",")],
+            start=_local_to_utc_iso(start, tz_offset_minutes),
+            end=_local_to_utc_iso(end, tz_offset_minutes),
+        )
+    except models.ValidationError as e:
+        return RedirectResponse(f"/view/{token}?error={quote(str(e))}", status_code=303)
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
+        return items + [item], item
+
+    await storage.mutate(_mutator, message=f"Create item: {item['title']}")
+    return RedirectResponse(f"/view/{token}", status_code=303)
+
+
+@app.post("/view/{token}/{item_id}/complete")
+async def complete_item_form(token: str, item_id: str):
+    _require_token(token)
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
+        item = models.find(items, item_id)
+        idx = items.index(item)
+        completed = dict(item)
+        completed["completed_at"] = models.now_iso()
+        new_items = list(items)
+        new_items[idx] = completed
+        return new_items, completed
+
+    try:
+        await storage.mutate(_mutator, message=f"Complete item {item_id}")
+    except models.ItemNotFoundError:
+        pass
+    return RedirectResponse(f"/view/{token}", status_code=303)
+
+
+@app.post("/view/{token}/{item_id}/uncomplete")
+async def uncomplete_item_form(token: str, item_id: str):
+    _require_token(token)
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
+        item = models.find(items, item_id)
+        idx = items.index(item)
+        uncompleted = dict(item)
+        uncompleted["completed_at"] = None
+        new_items = list(items)
+        new_items[idx] = uncompleted
+        return new_items, uncompleted
+
+    try:
+        await storage.mutate(_mutator, message=f"Uncomplete item {item_id}")
+    except models.ItemNotFoundError:
+        pass
+    return RedirectResponse(f"/view/{token}", status_code=303)
+
+
+@app.post("/view/{token}/{item_id}/delete")
+async def delete_item_form(token: str, item_id: str):
+    _require_token(token)
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], dict | None]:
+        remaining = [i for i in items if i["id"] != item_id]
+        return remaining, None
+
+    await storage.mutate(_mutator, message=f"Delete item {item_id}")
+    return RedirectResponse(f"/view/{token}", status_code=303)
