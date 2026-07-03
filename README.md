@@ -23,6 +23,22 @@ interface, plus a mobile-first page for add/edit/complete/delete. No calendar vi
 no native app yet — those are car parts for later, though the JSON API underneath
 is built with them in mind.
 
+## Screenshots
+
+|  |  |
+|---|---|
+| ![List view](docs/screenshots/list-view.png) | ![List view, dark](docs/screenshots/list-view-dark.png) |
+| ![Edit screen](docs/screenshots/edit-screen.png) | ![Login](docs/screenshots/login.png) |
+
+Regenerate these against your own dev server after UI changes with:
+
+```bash
+./scripts/screenshot.sh
+```
+
+(Requires `.dev.env` set up per **Local development** below, and Google Chrome
+installed at the standard macOS path.)
+
 ## How it works
 
 ```mermaid
@@ -154,7 +170,12 @@ github_store.py  — thin GitHub Contents API client (generic file read/write)
 auth.py          — constant-time token comparison
 templates/items.html     — the list view
 templates/edit_item.html — the single-item edit screen
-static/style.css — shared styling for both pages
+templates/login.html     — password login screen
+templates/_mark.html     — the ensō ink-mark, included wherever the logo appears
+static/style.css  — shared styling for all pages
+static/favicon.svg — browser tab icon (same mark)
+scripts/smoke_test.py  — dev-only, exercises storage/models against the real repo
+scripts/screenshot.sh  — regenerates docs/screenshots/ from a local dev server
 Dockerfile
 fly.toml
 ```
