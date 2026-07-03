@@ -34,7 +34,10 @@ curl -s -c "$COOKIES" -X POST "http://localhost:$PORT/login" \
 
 shot() {
   # $1 = output name, $2 = path, $3 = extra chrome flags (optional)
+  # --force-device-scale-factor=2 for crisp (Retina-equivalent) images —
+  # otherwise these come out visibly soft on any modern display.
   "$CHROME" --headless=new --disable-gpu --no-sandbox --window-size=390,900 \
+    --force-device-scale-factor=2 \
     ${3:-} --screenshot="$OUT/$1.png" "http://localhost:$PORT$2" 2>/dev/null
 }
 
