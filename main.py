@@ -15,10 +15,13 @@ from pydantic import BaseModel
 
 import items_service
 import models
-from auth import safe_equal
+from auth import safe_equal, session_token
 from mcp_server import mcp
 
 MCP_TOKEN = os.environ["MCP_TOKEN"]
+VIEW_PASSWORD = os.environ["VIEW_PASSWORD"]
+SESSION_COOKIE = "chronicle_session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 400  # ~400 days — Chrome's cookie Max-Age cap
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -108,8 +111,56 @@ async def healthz():
 
 
 def _require_token(token: str) -> None:
+    """Pure token auth, no cookie shortcut — used by the JSON API and MCP, which
+    are meant for programmatic clients, not a browser session."""
     if not safe_equal(token, MCP_TOKEN):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _has_valid_session(request: Request) -> bool:
+    cookie = request.cookies.get(SESSION_COOKIE, "")
+    return safe_equal(cookie, session_token(VIEW_PASSWORD))
+
+
+def _require_view_access(request: Request, token: str) -> None:
+    """Valid via either the URL path token (old bookmarks, MCP-adjacent links) or
+    a logged-in session cookie (the friendly bare-domain + password flow)."""
+    if safe_equal(token, MCP_TOKEN) or _has_valid_session(request):
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.get("/")
+async def root(request: Request):
+    if _has_valid_session(request):
+        return RedirectResponse(f"/view/{MCP_TOKEN}", status_code=302)
+    return RedirectResponse("/login", status_code=302)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(request: Request, error: str | None = None):
+    if _has_valid_session(request):
+        return RedirectResponse(f"/view/{MCP_TOKEN}", status_code=302)
+    return templates.TemplateResponse(request, "login.html", {"error": error})
+
+
+@app.post("/login")
+async def login_submit(password: str = Form(...)):
+    if not safe_equal(password, VIEW_PASSWORD):
+        return RedirectResponse("/login?error=Wrong+password", status_code=303)
+    response = RedirectResponse(f"/view/{MCP_TOKEN}", status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE, session_token(VIEW_PASSWORD),
+        max_age=SESSION_MAX_AGE, httponly=True, secure=True, samesite="lax",
+    )
+    return response
+
+
+@app.post("/logout")
+async def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +198,9 @@ def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
 @app.get("/view/{token}", response_class=HTMLResponse)
 async def view_items(request: Request, token: str, error: str | None = None):
     """Mobile-first view of all items, with a quick-add form and per-item
-    complete/uncomplete/delete/edit actions. Same trust boundary as /mcp — the URL
-    path token — so there's no separate credential to manage."""
-    _require_token(token)
+    complete/uncomplete/delete/edit actions. Reachable either via the URL path
+    token or a logged-in session cookie (see /login)."""
+    _require_view_access(request, token)
 
     items = await items_service.list_items(include_completed=True)
 
@@ -179,6 +230,7 @@ async def view_items(request: Request, token: str, error: str | None = None):
 
 @app.post("/view/{token}/create")
 async def create_item_form(
+    request: Request,
     token: str,
     title: str = Form(...),
     content: str = Form(""),
@@ -187,7 +239,7 @@ async def create_item_form(
     end: str = Form(""),
     tz_offset_minutes: int = Form(0),
 ):
-    _require_token(token)
+    _require_view_access(request, token)
     try:
         await items_service.create(
             title,
@@ -203,7 +255,7 @@ async def create_item_form(
 
 @app.get("/view/{token}/{item_id}/edit", response_class=HTMLResponse)
 async def edit_item_form(request: Request, token: str, item_id: str):
-    _require_token(token)
+    _require_view_access(request, token)
     try:
         item = await items_service.get(item_id)
     except models.ItemNotFoundError as e:
@@ -215,6 +267,7 @@ async def edit_item_form(request: Request, token: str, item_id: str):
 
 @app.post("/view/{token}/{item_id}/edit")
 async def update_item_form(
+    request: Request,
     token: str,
     item_id: str,
     title: str = Form(...),
@@ -224,7 +277,7 @@ async def update_item_form(
     end: str = Form(""),
     tz_offset_minutes: int = Form(0),
 ):
-    _require_token(token)
+    _require_view_access(request, token)
     new_start = _local_to_utc_iso(start, tz_offset_minutes)
     new_end = _local_to_utc_iso(end, tz_offset_minutes)
     try:
@@ -248,8 +301,8 @@ async def update_item_form(
 
 
 @app.post("/view/{token}/{item_id}/complete")
-async def complete_item_form(token: str, item_id: str):
-    _require_token(token)
+async def complete_item_form(request: Request, token: str, item_id: str):
+    _require_view_access(request, token)
     try:
         await items_service.complete(item_id)
     except models.ItemNotFoundError:
@@ -258,8 +311,8 @@ async def complete_item_form(token: str, item_id: str):
 
 
 @app.post("/view/{token}/{item_id}/uncomplete")
-async def uncomplete_item_form(token: str, item_id: str):
-    _require_token(token)
+async def uncomplete_item_form(request: Request, token: str, item_id: str):
+    _require_view_access(request, token)
     try:
         await items_service.uncomplete(item_id)
     except models.ItemNotFoundError:
@@ -268,8 +321,8 @@ async def uncomplete_item_form(token: str, item_id: str):
 
 
 @app.post("/view/{token}/{item_id}/delete")
-async def delete_item_form(token: str, item_id: str):
-    _require_token(token)
+async def delete_item_form(request: Request, token: str, item_id: str):
+    _require_view_access(request, token)
     try:
         await items_service.delete(item_id)
     except models.ItemNotFoundError:

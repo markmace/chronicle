@@ -98,13 +98,14 @@ fly launch          # accept defaults, decline deploy-now
 
 fly secrets set \
   MCP_TOKEN=$(openssl rand -hex 32) \
+  VIEW_PASSWORD=some-password-you-choose \
   GITHUB_TOKEN=ghp_your_pat_here \
   GITHUB_REPO=youruser/chronicle-data
 
 fly deploy
 ```
 
-Note the `MCP_TOKEN` — you'll need it for both the connector URL and the view page.
+Note the `MCP_TOKEN` — you'll need it for the connector URL.
 
 ### 4. Connect Claude
 
@@ -118,9 +119,15 @@ access logs. Deliberate simplicity tradeoff for a personal tool. Rotate with
 
 Ask Claude "list my Chronicle items" — should come back empty on a fresh repo.
 
-### 5. Bookmark the view page
+### 5. Log in to the web page
 
-`https://<your-app>.fly.dev/view/<your-MCP_TOKEN>`
+Visit `https://<your-app>.fly.dev/` and enter `VIEW_PASSWORD`. A cookie remembers
+you for ~400 days (Chrome's max), so this is normally a one-time thing per device
+— log out via the link in the page footer if you ever need to re-auth. The old
+`/view/<MCP_TOKEN>` URL still works directly too, session or not.
+
+Bookmark the bare domain (`https://<your-app>.fly.dev/`) — that's the friendly
+entry point now.
 
 ## Local development
 
