@@ -9,6 +9,9 @@ Usage: set MCP_TOKEN/GITHUB_TOKEN/GITHUB_REPO (e.g. `source .dev.env`), then
 
 import asyncio
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import models
 import storage

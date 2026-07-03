@@ -1,4 +1,9 @@
-app = 'chronicle'
+# fly.toml app configuration file generated for chronicle-honeyed-inlet-2183 on 2026-07-03T11:55:42-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'chronicle-honeyed-inlet-2183'
 primary_region = 'sjc'
 
 [build]
@@ -6,11 +11,12 @@ primary_region = 'sjc'
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
