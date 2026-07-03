@@ -30,14 +30,20 @@ is built with them in mind.
 | ![List view](docs/screenshots/list-view.png) | ![List view, dark](docs/screenshots/list-view-dark.png) |
 | ![Edit screen](docs/screenshots/edit-screen.png) | ![Login](docs/screenshots/login.png) |
 
+![List view, desktop](docs/screenshots/list-view-desktop.png)
+
 Regenerate these against your own dev server after UI changes with:
 
 ```bash
-./scripts/screenshot.sh
+uv run python scripts/screenshot.py
 ```
 
 (Requires `.dev.env` set up per **Local development** below, and Google Chrome
-installed at the standard macOS path.)
+installed at the standard macOS path.) This drives Chrome over the DevTools
+Protocol directly rather than trusting the `--window-size` CLI flag — on at
+least this machine's Chrome build, that flag is silently floored around
+500px in headless screenshot mode, so a requested mobile width still laid
+out (and got cropped from) a desktop-width page.
 
 ## How it works
 
@@ -175,7 +181,7 @@ templates/_mark.html     — the ensō ink-mark, included wherever the logo appe
 static/style.css  — shared styling for all pages
 static/favicon.svg — browser tab icon (same mark)
 scripts/smoke_test.py  — dev-only, exercises storage/models against the real repo
-scripts/screenshot.sh  — regenerates docs/screenshots/ from a local dev server
+scripts/screenshot.py  — regenerates docs/screenshots/ from a local dev server
 Dockerfile
 fly.toml
 ```
