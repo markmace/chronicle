@@ -138,3 +138,19 @@ async def delete_item(id: str) -> str:
     except models.ItemNotFoundError as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "id": id, "title": deleted["title"]})
+
+
+@mcp.tool()
+async def reorder_note(id: str, direction: str) -> str:
+    """
+    Move a note up or down relative to other active (uncompleted) notes.
+    direction must be "up" or "down". No-op if already at that end of the list.
+    Only applies to notes — reminders/events sort by their start time instead.
+    """
+    if direction not in ("up", "down"):
+        return json.dumps({"ok": False, "error": "direction must be 'up' or 'down'."})
+    try:
+        await items_service.reorder_note(id, direction)
+    except models.ItemNotFoundError as e:
+        return json.dumps({"ok": False, "error": str(e)})
+    return json.dumps({"ok": True})

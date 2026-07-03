@@ -148,3 +148,36 @@ async def delete(item_id: str) -> dict:
         return [i for i in items if i["id"] != item_id], item
 
     return await storage.mutate(_mutator, message=f"Delete item {item_id}")
+
+
+async def reorder_note(item_id: str, direction: str) -> None:
+    """Move a note up or down among other active notes by swapping `order` with
+    its neighbor in that direction. A no-op at either end of the list rather than
+    an error. May raise models.ItemNotFoundError."""
+
+    def _mutator(items: list[dict]) -> tuple[list[dict], None]:
+        item = models.find(items, item_id)
+        notes = [
+            i for i in items
+            if not i.get("completed_at") and models.item_kind(i) == "note"
+        ]
+        notes.sort(key=models.sort_order, reverse=True)
+        idx = next(i for i, n in enumerate(notes) if n["id"] == item_id)
+        neighbor_idx = idx - 1 if direction == "up" else idx + 1
+        if neighbor_idx < 0 or neighbor_idx >= len(notes):
+            return items, None
+
+        neighbor = notes[neighbor_idx]
+        item_order = models.sort_order(item)
+        neighbor_order = models.sort_order(neighbor)
+        new_items = []
+        for i in items:
+            if i["id"] == item["id"]:
+                new_items.append({**i, "order": neighbor_order})
+            elif i["id"] == neighbor["id"]:
+                new_items.append({**i, "order": item_order})
+            else:
+                new_items.append(i)
+        return new_items, None
+
+    await storage.mutate(_mutator, message=f"Reorder note {item_id} ({direction})")

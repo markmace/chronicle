@@ -211,7 +211,7 @@ async def view_items(request: Request, token: str, error: str | None = None):
     upcoming.sort(key=lambda i: (i["start"] is None, i["start"] or ""))
 
     notes = [i for i in active if models.item_kind(i) == "note"]
-    notes.sort(key=lambda i: i["created_at"], reverse=True)
+    notes.sort(key=models.sort_order, reverse=True)
 
     completed.sort(key=lambda i: i["completed_at"], reverse=True)
 
@@ -330,6 +330,16 @@ async def delete_item_form(request: Request, token: str, item_id: str):
     return RedirectResponse(f"/view/{token}", status_code=303)
 
 
+@app.post("/view/{token}/{item_id}/reorder")
+async def reorder_note_form(request: Request, token: str, item_id: str, direction: str = Form(...)):
+    _require_view_access(request, token)
+    try:
+        await items_service.reorder_note(item_id, direction)
+    except models.ItemNotFoundError:
+        pass
+    return RedirectResponse(f"/view/{token}", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # JSON REST API — same operations as the MCP tools, for future clients (a
 # richer web app, an iOS/Mac app) that want JSON instead of form-encoded POSTs.
@@ -433,3 +443,19 @@ async def api_delete_item(token: str, item_id: str):
     except models.ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True, "id": item_id, "title": deleted["title"]}
+
+
+class ReorderBody(BaseModel):
+    direction: str
+
+
+@app.post("/api/{token}/items/{item_id}/reorder")
+async def api_reorder_note(token: str, item_id: str, body: ReorderBody):
+    _require_token(token)
+    if body.direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="direction must be 'up' or 'down'.")
+    try:
+        await items_service.reorder_note(item_id, body.direction)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True}

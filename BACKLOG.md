@@ -22,13 +22,17 @@ planning pass rather than growing organically out of the current template.
 
 ## Web UI
 
-- **Reorder notes manually** (drag, or move-up/down controls) — needs a persisted
-  order field; notes currently just sort by `created_at`.
-- **Collapse/truncate long notes** in the list view (show first N lines + "more"),
-  full content still visible on the edit screen.
-- **Reorder events/reminders manually** — needs clarifying: these currently sort by
-  `start` time, which is the whole point for dated items. Probably means overriding
-  order among *undated* reminders or same-day items, not fighting the calendar.
+- ~~**Reorder notes manually**~~ — done 2026-07-03. Persisted `order` field
+  (`models.sort_order`, falls back to `created_at` for pre-existing items),
+  move-up/move-down controls, same swap logic shared by MCP/web/JSON API via
+  `items_service.reorder_note`.
+- ~~**Collapse/truncate long notes**~~ — done 2026-07-03. Notes over 200 chars
+  show a truncated preview with a "more"/"less" toggle (pure `<details>`, no JS);
+  full content always shown on the edit screen regardless of length.
+- **Reorder events/reminders manually** — clarified: chronological order always
+  wins whenever start times differ; manual order only breaks ties among
+  undated reminders or items sharing the same start time. Not built yet — the
+  current `reorder_note` swap logic is scoped to notes only.
 - **Sort/group by tag** as an alternate view mode — likely folds into the
   composable-views work above rather than being its own one-off toggle.
 - **"Move groups"** — needs clarifying: reordering the sections themselves

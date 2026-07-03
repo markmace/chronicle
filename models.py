@@ -4,6 +4,7 @@ An item is a plain dict. Temporal shape (event / reminder / note) is never store
 it's derived from which of `start`/`end`/`completed_at` are set. See item_kind().
 """
 
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -80,6 +81,7 @@ def new_item(
         "completed_at": None,
         "created_at": ts,
         "updated_at": ts,
+        "order": time.time(),
     }
 
 
@@ -138,6 +140,15 @@ def item_kind(item: dict) -> str:
     if item.get("completed_at"):
         return "reminder"
     return "note"
+
+
+def sort_order(item: dict) -> float:
+    """Effective manual-sort position. Falls back to creation time for items
+    written before the `order` field existed, so untouched items keep sorting
+    newest-first exactly as they did before reordering was possible."""
+    if item.get("order") is not None:
+        return item["order"]
+    return parse_dt(item["created_at"]).timestamp()
 
 
 def find(items: list[dict], item_id: str) -> dict:

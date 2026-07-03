@@ -158,6 +158,7 @@ section { margin-bottom: 30px; }
 }
 .item-title:active { opacity: 0.6; }
 .item-content {
+  display: block;
   font-size: 14px;
   color: var(--ink-soft);
   margin-top: 3px;
@@ -165,6 +166,21 @@ section { margin-bottom: 30px; }
   word-break: break-word;
   line-height: 1.5;
 }
+.note-toggle summary {
+  font-family: "Zen Kaku Gothic New", -apple-system, sans-serif;
+  font-size: inherit;
+  padding: 0;
+}
+.note-toggle summary::before { content: none; }
+.note-toggle[open] summary .preview-text { display: none; }
+.note-toggle .toggle-word {
+  display: inline-block;
+  color: var(--indigo);
+  font-size: 13px;
+  margin-left: 2px;
+}
+.note-toggle .toggle-word::before { content: "more"; }
+.note-toggle[open] .toggle-word::before { content: "less"; }
 .item-meta {
   display: flex;
   flex-wrap: wrap;

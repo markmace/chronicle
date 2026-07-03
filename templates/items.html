@@ -105,7 +105,16 @@
       <div class="dot"></div>
       <div class="item-body">
         <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
-        {% if item.content %}<div class="item-content">{{ item.content }}</div>{% endif %}
+        {% if item.content %}
+          {% if item.content|length > 200 %}
+          <details class="note-toggle">
+            <summary><span class="item-content preview-text">{{ item.content|truncate(200) }}</span><span class="toggle-word"></span></summary>
+            <span class="item-content full-text">{{ item.content }}</span>
+          </details>
+          {% else %}
+          <div class="item-content">{{ item.content }}</div>
+          {% endif %}
+        {% endif %}
         {% if item.tags %}
         <div class="item-meta">
           {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
@@ -113,6 +122,18 @@
         {% endif %}
       </div>
       <div class="item-actions">
+        {% if not loop.first %}
+        <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
+          <input type="hidden" name="direction" value="up">
+          <button type="submit" class="icon-btn" aria-label="Move up">&uarr;</button>
+        </form>
+        {% endif %}
+        {% if not loop.last %}
+        <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
+          <input type="hidden" name="direction" value="down">
+          <button type="submit" class="icon-btn" aria-label="Move down">&darr;</button>
+        </form>
+        {% endif %}
         <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
           <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
         </form>
