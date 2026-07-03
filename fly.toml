@@ -13,7 +13,11 @@ primary_region = 'sjc'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  # Keep exactly 1 machine always running: FastMCP's streamable-http sessions live
+  # in process memory, not shared storage. min=0 (scale-to-zero) or >1 machines
+  # both cause "session not found" 404s — either the machine restarts mid-session,
+  # or the client's session lands on a machine that never saw it get created.
+  min_machines_running = 1
 
 [[vm]]
   memory = '256mb'
