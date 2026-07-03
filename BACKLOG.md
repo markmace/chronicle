@@ -4,17 +4,45 @@ Deferred ideas — not commitments, not scheduled. Add freely, prune freely. Kee
 entries short; the "why" only where it's not obvious. See `~/notes/Chronicle.md`
 for the underlying design philosophy these should stay consistent with.
 
+## Composable views (2026-07-03)
+
+The big one — this is Chronicle.md's own "views are configuration, not features"
+principle, actually being asked for now rather than just theorized about. Mark's
+framing: the front page should be assembled from configurable rules instead of the
+current hardcoded Upcoming/Notes/Completed grouping — e.g. "notes tagged `important`
+at the top, then reminders from the past few days." Needs a **canonical view**
+(today's default grouping, or similar) always reachable via a simple switcher, so a
+custom view can never hide something you need to see.
+
+Deliberately not scoped or started yet — real design work before code: what a
+"view definition" looks like (a saved filter/sort/grouping recipe?), where it's
+stored (part of an item? a separate `views.json`?), how the switcher UI works, and
+how this interacts with the tag-vs-saved-view open question below. Worth its own
+planning pass rather than growing organically out of the current template.
+
 ## Web UI
 
+- **Reorder notes manually** (drag, or move-up/down controls) — needs a persisted
+  order field; notes currently just sort by `created_at`.
+- **Collapse/truncate long notes** in the list view (show first N lines + "more"),
+  full content still visible on the edit screen.
+- **Reorder events/reminders manually** — needs clarifying: these currently sort by
+  `start` time, which is the whole point for dated items. Probably means overriding
+  order among *undated* reminders or same-day items, not fighting the calendar.
+- **Sort/group by tag** as an alternate view mode — likely folds into the
+  composable-views work above rather than being its own one-off toggle.
+- **"Move groups"** — needs clarifying: reordering the sections themselves
+  (Upcoming/Notes/Completed), or moving an item between groups (e.g. note →
+  reminder)? The latter already works today via the edit screen's start/end fields;
+  worth confirming which one Mark means.
 - **Date/time entry, Apple Reminders–style.** A date alone implies local midnight;
   time is a separate, optional refinement on top. Also: default the date picker to
   today (or a "Now" quick-fill) instead of requiring it to be picked every time.
 - Mobile performance/UX pass — re-check load time, tap targets, scroll feel on an
   actual phone now that the page has grown (add form, edit screen, login).
 - Search across items (currently only exact tag filter; no free-text search).
-- A "Today" / calendar-style view — grouping upcoming items by day. Chronicle.md's
-  own vision calls this out explicitly as a first example of "views as
-  configuration."
+- A "Today" / calendar-style view — grouping upcoming items by day. Likely a
+  special case of the composable-views work above rather than a separate feature.
 - Explicit light/dark theme toggle (currently follows system preference only).
 - PWA installability (manifest.json) for a real home-screen icon + offline shell,
   vs. today's iOS-only "Add to Home Screen" via meta tag.
