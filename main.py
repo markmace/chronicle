@@ -9,10 +9,12 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
+import items_service
 import models
-import storage
 from auth import safe_equal
 from mcp_server import mcp
 
@@ -80,7 +82,7 @@ class MCPTokenMiddleware:
     def _cors_headers(origin: bytes | None) -> list:
         return [
             (b"access-control-allow-origin", origin or b"*"),
-            (b"access-control-allow-methods", b"GET, POST, DELETE, OPTIONS"),
+            (b"access-control-allow-methods", b"GET, POST, PATCH, DELETE, OPTIONS"),
             (b"access-control-allow-headers", b"content-type, mcp-session-id, accept"),
             (b"access-control-allow-credentials", b"true"),
         ]
@@ -97,12 +99,22 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/mcp", MCPTokenMiddleware(mcp_asgi))
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")))
 
 
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
 
+
+def _require_token(token: str) -> None:
+    if not safe_equal(token, MCP_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# ---------------------------------------------------------------------------
+# Mobile-first HTML view: quick-add, complete/uncomplete, delete, and edit.
+# ---------------------------------------------------------------------------
 
 def _fmt(iso: str | None) -> str | None:
     if not iso:
@@ -121,11 +133,6 @@ def _for_display(item: dict) -> dict:
     }
 
 
-def _require_token(token: str) -> None:
-    if not safe_equal(token, MCP_TOKEN):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-
 def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
     """Convert a <input type=datetime-local> value (naive, in the browser's local
     time) to a UTC ISO string. tz_offset_minutes is JS's Date.getTimezoneOffset()
@@ -140,11 +147,11 @@ def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
 @app.get("/view/{token}", response_class=HTMLResponse)
 async def view_items(request: Request, token: str, error: str | None = None):
     """Mobile-first view of all items, with a quick-add form and per-item
-    complete/uncomplete/delete actions. Same trust boundary as /mcp — the URL path
-    token — so there's no separate credential to manage."""
+    complete/uncomplete/delete/edit actions. Same trust boundary as /mcp — the URL
+    path token — so there's no separate credential to manage."""
     _require_token(token)
 
-    items, _ = await storage.read_items()
+    items = await items_service.list_items(include_completed=True)
 
     active = [i for i in items if not i.get("completed_at")]
     completed = [i for i in items if i.get("completed_at")]
@@ -181,9 +188,8 @@ async def create_item_form(
     tz_offset_minutes: int = Form(0),
 ):
     _require_token(token)
-
     try:
-        item = models.new_item(
+        await items_service.create(
             title,
             content=content,
             tags=[t for t in tags.split(",")],
@@ -192,29 +198,60 @@ async def create_item_form(
         )
     except models.ValidationError as e:
         return RedirectResponse(f"/view/{token}?error={quote(str(e))}", status_code=303)
+    return RedirectResponse(f"/view/{token}", status_code=303)
 
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        return items + [item], item
 
-    await storage.mutate(_mutator, message=f"Create item: {item['title']}")
+@app.get("/view/{token}/{item_id}/edit", response_class=HTMLResponse)
+async def edit_item_form(request: Request, token: str, item_id: str):
+    _require_token(token)
+    try:
+        item = await items_service.get(item_id)
+    except models.ItemNotFoundError as e:
+        return RedirectResponse(f"/view/{token}?error={quote(str(e))}", status_code=303)
+    return templates.TemplateResponse(
+        request, "edit_item.html", {"token": token, "item": item, "error": None},
+    )
+
+
+@app.post("/view/{token}/{item_id}/edit")
+async def update_item_form(
+    token: str,
+    item_id: str,
+    title: str = Form(...),
+    content: str = Form(""),
+    tags: str = Form(""),
+    start: str = Form(""),
+    end: str = Form(""),
+    tz_offset_minutes: int = Form(0),
+):
+    _require_token(token)
+    new_start = _local_to_utc_iso(start, tz_offset_minutes)
+    new_end = _local_to_utc_iso(end, tz_offset_minutes)
+    try:
+        await items_service.update(
+            item_id,
+            title=title,
+            content=content,
+            tags=[t for t in tags.split(",")],
+            start=new_start,
+            end=new_end,
+            clear_start=new_start is None,
+            clear_end=new_end is None,
+        )
+    except models.ItemNotFoundError as e:
+        return RedirectResponse(f"/view/{token}?error={quote(str(e))}", status_code=303)
+    except models.ValidationError as e:
+        return RedirectResponse(
+            f"/view/{token}/{item_id}/edit?error={quote(str(e))}", status_code=303
+        )
     return RedirectResponse(f"/view/{token}", status_code=303)
 
 
 @app.post("/view/{token}/{item_id}/complete")
 async def complete_item_form(token: str, item_id: str):
     _require_token(token)
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        item = models.find(items, item_id)
-        idx = items.index(item)
-        completed = dict(item)
-        completed["completed_at"] = models.now_iso()
-        new_items = list(items)
-        new_items[idx] = completed
-        return new_items, completed
-
     try:
-        await storage.mutate(_mutator, message=f"Complete item {item_id}")
+        await items_service.complete(item_id)
     except models.ItemNotFoundError:
         pass
     return RedirectResponse(f"/view/{token}", status_code=303)
@@ -223,18 +260,8 @@ async def complete_item_form(token: str, item_id: str):
 @app.post("/view/{token}/{item_id}/uncomplete")
 async def uncomplete_item_form(token: str, item_id: str):
     _require_token(token)
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        item = models.find(items, item_id)
-        idx = items.index(item)
-        uncompleted = dict(item)
-        uncompleted["completed_at"] = None
-        new_items = list(items)
-        new_items[idx] = uncompleted
-        return new_items, uncompleted
-
     try:
-        await storage.mutate(_mutator, message=f"Uncomplete item {item_id}")
+        await items_service.uncomplete(item_id)
     except models.ItemNotFoundError:
         pass
     return RedirectResponse(f"/view/{token}", status_code=303)
@@ -243,10 +270,113 @@ async def uncomplete_item_form(token: str, item_id: str):
 @app.post("/view/{token}/{item_id}/delete")
 async def delete_item_form(token: str, item_id: str):
     _require_token(token)
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict | None]:
-        remaining = [i for i in items if i["id"] != item_id]
-        return remaining, None
-
-    await storage.mutate(_mutator, message=f"Delete item {item_id}")
+    try:
+        await items_service.delete(item_id)
+    except models.ItemNotFoundError:
+        pass
     return RedirectResponse(f"/view/{token}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# JSON REST API — same operations as the MCP tools, for future clients (a
+# richer web app, an iOS/Mac app) that want JSON instead of form-encoded POSTs.
+# ---------------------------------------------------------------------------
+
+class CreateItemBody(BaseModel):
+    title: str
+    content: str = ""
+    tags: list[str] = []
+    start: str | None = None
+    end: str | None = None
+
+
+class UpdateItemBody(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+    start: str | None = None
+    end: str | None = None
+    clear_start: bool = False
+    clear_end: bool = False
+
+
+@app.get("/api/{token}/items")
+async def api_list_items(
+    token: str,
+    tag: str | None = None,
+    start_after: str | None = None,
+    start_before: str | None = None,
+    include_completed: bool = False,
+):
+    _require_token(token)
+    try:
+        items = await items_service.list_items(tag, start_after, start_before, include_completed)
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"items": [items_service.summary(i) for i in items], "count": len(items)}
+
+
+@app.post("/api/{token}/items", status_code=201)
+async def api_create_item(token: str, body: CreateItemBody):
+    _require_token(token)
+    try:
+        item = await items_service.create(body.title, body.content, body.tags, body.start, body.end)
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return item
+
+
+@app.get("/api/{token}/items/{item_id}")
+async def api_get_item(token: str, item_id: str):
+    _require_token(token)
+    try:
+        item = await items_service.get(item_id)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {**item, "kind": models.item_kind(item)}
+
+
+@app.patch("/api/{token}/items/{item_id}")
+async def api_update_item(token: str, item_id: str, body: UpdateItemBody):
+    _require_token(token)
+    try:
+        return await items_service.update(
+            item_id,
+            title=body.title, content=body.content, tags=body.tags,
+            start=body.start, end=body.end,
+            clear_start=body.clear_start, clear_end=body.clear_end,
+        )
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/{token}/items/{item_id}/complete")
+async def api_complete_item(token: str, item_id: str):
+    _require_token(token)
+    try:
+        item, already = await items_service.complete(item_id)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"item": item, "already_completed": already}
+
+
+@app.post("/api/{token}/items/{item_id}/uncomplete")
+async def api_uncomplete_item(token: str, item_id: str):
+    _require_token(token)
+    try:
+        item, already = await items_service.uncomplete(item_id)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"item": item, "already_uncompleted": already}
+
+
+@app.delete("/api/{token}/items/{item_id}")
+async def api_delete_item(token: str, item_id: str):
+    _require_token(token)
+    try:
+        deleted = await items_service.delete(item_id)
+    except models.ItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "id": item_id, "title": deleted["title"]}

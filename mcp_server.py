@@ -6,25 +6,13 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
+import items_service
 import models
-import storage
 
 mcp = FastMCP(
     "Chronicle",
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
-
-
-def _summary(item: dict) -> dict:
-    return {
-        "id": item["id"],
-        "title": item["title"],
-        "tags": item["tags"],
-        "start": item["start"],
-        "end": item["end"],
-        "completed_at": item["completed_at"],
-        "kind": models.item_kind(item),
-    }
 
 
 @mcp.tool()
@@ -46,15 +34,10 @@ async def create_item(
     or {"ok": false, "error": ...} on invalid input.
     """
     try:
-        item = models.new_item(title, content, tags, start, end)
+        item = await items_service.create(title, content, tags, start, end)
     except models.ValidationError as e:
         return json.dumps({"ok": False, "error": str(e)})
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        return items + [item], item
-
-    result = await storage.mutate(_mutator, message=f"Create item: {item['title']}")
-    return json.dumps({"ok": True, "item": result})
+    return json.dumps({"ok": True, "item": item})
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -74,42 +57,19 @@ async def list_items(
       undated items.
     - include_completed: False (default) hides items with completed_at set.
     """
-    items, _ = await storage.read_items()
-
-    if tag:
-        tag = tag.strip().lower()
-        items = [i for i in items if tag in i["tags"]]
-
-    if not include_completed:
-        items = [i for i in items if not i.get("completed_at")]
-
-    if start_after or start_before:
-        after_dt = models.parse_dt(start_after) if start_after else None
-        before_dt = models.parse_dt(start_before) if start_before else None
-        filtered = []
-        for i in items:
-            if not i.get("start"):
-                continue
-            start_dt = models.parse_dt(i["start"])
-            if after_dt and start_dt < after_dt:
-                continue
-            if before_dt and start_dt > before_dt:
-                continue
-            filtered.append(i)
-        items = filtered
-
-    items.sort(key=lambda i: (i["start"] is None, i["start"] or ""))
-
-    summaries = [_summary(i) for i in items]
+    try:
+        items = await items_service.list_items(tag, start_after, start_before, include_completed)
+    except models.ValidationError as e:
+        return json.dumps({"ok": False, "error": str(e)})
+    summaries = [items_service.summary(i) for i in items]
     return json.dumps({"items": summaries, "count": len(summaries)})
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_item(id: str) -> str:
     """Full item including content, plus derived `kind`. Error if no item has this id."""
-    items, _ = await storage.read_items()
     try:
-        item = models.find(items, id)
+        item = await items_service.get(id)
     except models.ItemNotFoundError as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "item": {**item, "kind": models.item_kind(item)}})
@@ -133,24 +93,10 @@ async def update_item(
     leaves them as-is. Call get_item() first if you're unsure what's currently set.
     """
     try:
-        def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-            item = models.find(items, id)
-            idx = items.index(item)
-            patched = models.apply_patch(
-                item,
-                title=title,
-                content=content,
-                tags=tags,
-                start=start,
-                end=end,
-                clear_start=clear_start,
-                clear_end=clear_end,
-            )
-            new_items = list(items)
-            new_items[idx] = patched
-            return new_items, patched
-
-        result = await storage.mutate(_mutator, message=f"Update item {id}")
+        result = await items_service.update(
+            id, title=title, content=content, tags=tags,
+            start=start, end=end, clear_start=clear_start, clear_end=clear_end,
+        )
     except (models.ItemNotFoundError, models.ValidationError) as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "item": result})
@@ -159,51 +105,21 @@ async def update_item(
 @mcp.tool()
 async def complete_item(id: str) -> str:
     """Sets completed_at=now. Idempotent — safe to call on an already-completed item."""
-    items, _ = await storage.read_items()
     try:
-        item = models.find(items, id)
+        item, already = await items_service.complete(id)
     except models.ItemNotFoundError as e:
         return json.dumps({"ok": False, "error": str(e)})
-    if item.get("completed_at"):
-        return json.dumps({"ok": True, "item": item, "already_completed": True})
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        item = models.find(items, id)
-        idx = items.index(item)
-        completed = dict(item)
-        completed["completed_at"] = models.now_iso()
-        completed["updated_at"] = completed["completed_at"]
-        new_items = list(items)
-        new_items[idx] = completed
-        return new_items, completed
-
-    result = await storage.mutate(_mutator, message=f"Complete item {id}")
-    return json.dumps({"ok": True, "item": result, "already_completed": False})
+    return json.dumps({"ok": True, "item": item, "already_completed": already})
 
 
 @mcp.tool()
 async def uncomplete_item(id: str) -> str:
     """Clears completed_at. Idempotent, symmetric to complete_item."""
-    items, _ = await storage.read_items()
     try:
-        item = models.find(items, id)
+        item, already = await items_service.uncomplete(id)
     except models.ItemNotFoundError as e:
         return json.dumps({"ok": False, "error": str(e)})
-    if not item.get("completed_at"):
-        return json.dumps({"ok": True, "item": item, "already_uncompleted": True})
-
-    def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-        item = models.find(items, id)
-        idx = items.index(item)
-        uncompleted = dict(item)
-        uncompleted["completed_at"] = None
-        uncompleted["updated_at"] = models.now_iso()
-        new_items = list(items)
-        new_items[idx] = uncompleted
-        return new_items, uncompleted
-
-    result = await storage.mutate(_mutator, message=f"Uncomplete item {id}")
-    return json.dumps({"ok": True, "item": result, "already_uncompleted": False})
+    return json.dumps({"ok": True, "item": item, "already_uncompleted": already})
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -218,11 +134,7 @@ async def delete_item(id: str) -> str:
     Recoverable via the chronicle-data repo's git history, but don't rely on that.
     """
     try:
-        def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
-            item = models.find(items, id)
-            return [i for i in items if i["id"] != id], item
-
-        deleted = await storage.mutate(_mutator, message=f"Delete item {id}")
+        deleted = await items_service.delete(id)
     except models.ItemNotFoundError as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "id": id, "title": deleted["title"]})

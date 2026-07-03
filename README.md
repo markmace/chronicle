@@ -19,9 +19,9 @@ one coherent surface for Claude to read, write, and reason over.
 
 This is the *skateboard*: the smallest end-to-end version that proves the loop of
 Claude and me working on the same items together. Single-user, MCP as the primary
-interface, plus one simple mobile-first page for quick add/complete/delete. No
-calendar view, no editing existing items in the page (that's still a Claude job) —
-those are car parts for later.
+interface, plus a mobile-first page for add/edit/complete/delete. No calendar view,
+no native app yet — those are car parts for later, though the JSON API underneath
+is built with them in mind.
 
 ## How it works
 
@@ -55,11 +55,21 @@ git commit.
 ### The `/view` page
 
 `GET /view/<MCP_TOKEN>` — a mobile-first page grouping items into Upcoming / Notes /
-Completed, with a quick-add form and per-item complete/uncomplete/delete. No
-build tooling, no JS framework — plain forms POSTing back to the same server.
-Editing an existing item's fields is still a Claude job (`update_item`). Add it to
+Completed. Add is collapsed behind a small "+" bar by default; tapping an item's
+title opens a dedicated edit screen (title/content/tags/start/end, plus delete).
+No build tooling, no JS framework — plain forms POSTing back to the same server,
+with a little inline JS just for timezone conversion on datetime fields. Add it to
 your iPhone home screen (Share → Add to Home Screen) for an app-like, chrome-free
 view.
+
+### JSON REST API
+
+`/api/<MCP_TOKEN>/items` (GET/POST), `/api/<MCP_TOKEN>/items/<id>` (GET/PATCH/DELETE),
+plus `/complete` and `/uncomplete` POST endpoints — the same operations as the MCP
+tools and the HTML forms, as JSON. Not consumed by the current page (which still
+uses plain form POSTs), but there so a future richer web app or native app has a
+stable contract to build on without another rewrite of the business logic — which
+all three surfaces (MCP, HTML forms, JSON API) share via `items_service.py`.
 
 ---
 
@@ -128,13 +138,16 @@ filtering, completes one, then deletes everything it created).
 ## File layout
 
 ```
-main.py          — FastAPI app: MCP mount (token auth, CORS), /healthz, /view page
-mcp_server.py    — the 7 MCP tools
+main.py          — FastAPI app: MCP mount, /healthz, /view + /view/.../edit pages, JSON API
+mcp_server.py    — the 7 MCP tools (thin wrappers over items_service)
+items_service.py — shared create/list/get/update/complete/delete logic
 models.py        — item schema, validation, derived kind
 storage.py       — items.json read/write, retry-once-on-conflict mutation helper
 github_store.py  — thin GitHub Contents API client (generic file read/write)
 auth.py          — constant-time token comparison
-templates/items.html — the read-only view
+templates/items.html     — the list view
+templates/edit_item.html — the single-item edit screen
+static/style.css — shared styling for both pages
 Dockerfile
 fly.toml
 ```

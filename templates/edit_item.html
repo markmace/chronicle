@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<title>Edit — Chronicle</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="back-row">
+    <a class="back-link" href="/view/{{ token }}">&larr; Chronicle</a>
+  </div>
+  <h1 class="page-title">Edit</h1>
+
+  {% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+  <section>
+    <form class="add-form card-list" method="post" action="/view/{{ token }}/{{ item.id }}/edit" id="edit-form">
+      <input type="hidden" name="tz_offset_minutes" id="tz_offset_minutes" value="0">
+      <input type="text" name="title" placeholder="Title" required class="field field-title" value="{{ item.title }}">
+      <textarea name="content" placeholder="Notes (optional)" class="field" rows="3">{{ item.content }}</textarea>
+      <input type="text" name="tags" placeholder="Tags, comma separated" class="field" value="{{ item.tags|join(', ') }}">
+      <div class="field-row">
+        <label class="field-label">Starts
+          <input type="datetime-local" name="start" id="start-input" class="field">
+        </label>
+        <label class="field-label">Ends
+          <input type="datetime-local" name="end" id="end-input" class="field">
+        </label>
+      </div>
+      <p class="hint">Leave both blank for a note, fill Starts only for a reminder, fill both for an event. Clearing a field removes it.</p>
+      <button type="submit" class="save-btn">Save</button>
+    </form>
+  </section>
+
+  <section>
+    <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
+      <button type="submit" class="danger-btn">Delete item</button>
+    </form>
+  </section>
+
+  <script>
+    document.getElementById('tz_offset_minutes').value = new Date().getTimezoneOffset();
+
+    function toLocalInputValue(utcIso) {
+      if (!utcIso) return '';
+      const d = new Date(utcIso);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    const startUtc = {{ (item.start or "") | tojson }};
+    const endUtc = {{ (item.end or "") | tojson }};
+    if (startUtc) document.getElementById('start-input').value = toLocalInputValue(startUtc);
+    if (endUtc) document.getElementById('end-input').value = toLocalInputValue(endUtc);
+  </script>
+</body>
+</html>
