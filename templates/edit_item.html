@@ -51,9 +51,29 @@
     </div>
   </section>
 
+  <section class="edit-actions">
+    <form method="post" action="/view/{{ token }}/{{ item.id }}/{{ 'uncomplete' if item.completed_at else 'complete' }}">
+      <button type="submit" class="ghost-btn">{{ 'Mark not done' if item.completed_at else 'Mark done' }}</button>
+    </form>
+    {% if item.kind == 'note' %}
+    {% if not is_first %}
+    <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
+      <input type="hidden" name="direction" value="up">
+      <button type="submit" class="ghost-btn">Move up</button>
+    </form>
+    {% endif %}
+    {% if not is_last %}
+    <form method="post" action="/view/{{ token }}/{{ item.id }}/reorder">
+      <input type="hidden" name="direction" value="down">
+      <button type="submit" class="ghost-btn">Move down</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </section>
+
   <section>
     <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
-      <button type="submit" class="ghost-btn">Delete item</button>
+      <button type="submit" class="ghost-btn danger">Delete item</button>
     </form>
   </section>
 

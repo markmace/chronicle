@@ -22,10 +22,15 @@ planning pass rather than growing organically out of the current template.
 
 ## Web UI
 
-- ~~**Reorder notes manually**~~ — done 2026-07-03. Persisted `order` field
-  (`models.sort_order`, falls back to `created_at` for pre-existing items),
-  move-up/move-down controls, same swap logic shared by MCP/web/JSON API via
-  `items_service.reorder_note`.
+- ~~**Reorder notes manually**~~ — done 2026-07-03, revised same day. First pass
+  added always-visible drag handles to every note row; felt bolted-on and broke
+  the list's quiet/restrained design (never showing controls you're not using).
+  Reordering now lives on the note's edit screen (Move up/down, single-step,
+  reusing `items_service.reorder_note`'s swap logic — also the MCP tool's model
+  for "move this note up"). `items_service.move_note` (fractional-order,
+  arbitrary position) and its JSON API endpoint were built for real drag-and-drop
+  and still work, just unused by the UI now — worth revisiting once/if a
+  composable view actually wants draggable ordering.
 - ~~**Collapse/truncate long notes**~~ — done 2026-07-03. Notes over 200 chars
   show a truncated preview with a "more"/"less" toggle (pure `<details>`, no JS);
   full content always shown on the edit screen regardless of length.
@@ -43,7 +48,12 @@ planning pass rather than growing organically out of the current template.
   time is a separate, optional refinement on top. Also: default the date picker to
   today (or a "Now" quick-fill) instead of requiring it to be picked every time.
 - Mobile performance/UX pass — re-check load time, tap targets, scroll feel on an
-  actual phone now that the page has grown (add form, edit screen, login).
+  actual phone now that the page has grown (add form, edit screen, login). One
+  real bug already fixed 2026-07-03: `storage.py` was sleeping up to 2s on
+  *every* read within 2s of any write (the fix for GitHub's read-after-write
+  lag), which penalized every action-then-reload regardless of whether that
+  particular read needed it. Now caches the known-good post-write state instead
+  of sleeping — still worth a real look at load time beyond that one fix.
 - Search across items (currently only exact tag filter; no free-text search).
 - A "Today" / calendar-style view — grouping upcoming items by day. Likely a
   special case of the composable-views work above rather than a separate feature.

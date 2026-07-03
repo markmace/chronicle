@@ -35,10 +35,12 @@ async def read_file(path: str) -> tuple[str, str]:
     return content, data["sha"]
 
 
-async def write_file(path: str, content: str, message: str, sha: str | None) -> str:
+async def write_file(path: str, content: str, message: str, sha: str | None) -> tuple[str, str]:
     """Create (sha=None) or conditionally update (sha=current sha) a file.
 
     Raises ConflictError on HTTP 409 — the file changed since sha was read.
+    Returns (commit_sha, new_content_sha) — the latter is the blob sha the
+    *next* conditional write needs, distinct from the commit sha.
     """
     body: dict = {
         "message": message,
@@ -58,4 +60,5 @@ async def write_file(path: str, content: str, message: str, sha: str | None) -> 
         raise ConflictError(path)
     r.raise_for_status()
 
-    return r.json()["commit"]["sha"]
+    data = r.json()
+    return data["commit"]["sha"], data["content"]["sha"]

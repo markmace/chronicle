@@ -261,8 +261,25 @@ async def edit_item_form(request: Request, token: str, item_id: str):
         item = await items_service.get(item_id)
     except models.ItemNotFoundError as e:
         return RedirectResponse(f"/view/{token}?error={quote(str(e))}", status_code=303)
+
+    kind = models.item_kind(item)
+    is_first = is_last = False
+    if kind == "note":
+        notes = [i for i in await items_service.list_items() if models.item_kind(i) == "note"]
+        notes.sort(key=models.sort_order, reverse=True)
+        idx = next((i for i, n in enumerate(notes) if n["id"] == item_id), 0)
+        is_first = idx == 0
+        is_last = idx == len(notes) - 1
+
     return templates.TemplateResponse(
-        request, "edit_item.html", {"token": token, "item": item, "error": None},
+        request, "edit_item.html",
+        {
+            "token": token,
+            "item": {**item, "kind": kind},
+            "is_first": is_first,
+            "is_last": is_last,
+            "error": None,
+        },
     )
 
 

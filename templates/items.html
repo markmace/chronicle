@@ -69,26 +69,23 @@
     <div class="section-label">upcoming</div>
     {% if upcoming %}
     {% for item in upcoming %}
-    <div class="item kind-{{ item.kind }}">
-      <div class="dot"></div>
-      <div class="item-body">
-        <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
-        <div class="item-meta">
-          {% if item.display_start %}
-          <span>{{ item.display_start }}{% if item.display_end %} – {{ item.display_end }}{% endif %}</span>
-          {% else %}
-          <span>anytime</span>
-          {% endif %}
-          {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+    <div class="swipe-row">
+      <form method="post" action="/view/{{ token }}/{{ item.id }}/complete" class="swipe-action swipe-action-complete">
+        <button type="submit">Done</button>
+      </form>
+      <div class="swipe-content item kind-{{ item.kind }}" data-swipe>
+        <div class="dot"></div>
+        <div class="item-body">
+          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+          <div class="item-meta">
+            {% if item.display_start %}
+            <span>{{ item.display_start }}{% if item.display_end %} – {{ item.display_end }}{% endif %}</span>
+            {% else %}
+            <span>anytime</span>
+            {% endif %}
+            {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+          </div>
         </div>
-      </div>
-      <div class="item-actions">
-        <form method="post" action="/view/{{ token }}/{{ item.id }}/complete">
-          <button type="submit" class="icon-btn" aria-label="Mark done">&#10003;</button>
-        </form>
-        <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
-          <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
-        </form>
       </div>
     </div>
     {% endfor %}
@@ -100,14 +97,12 @@
   <section>
     <div class="section-label">notes</div>
     {% if notes %}
-    <div id="notes-list" data-token="{{ token }}">
-      {% for item in notes %}
-      <div class="item kind-note" data-id="{{ item.id }}">
-        <button type="button" class="drag-handle" aria-label="Drag to reorder, or focus and press the arrow keys">
-          <span class="grip-dot"></span><span class="grip-dot"></span>
-          <span class="grip-dot"></span><span class="grip-dot"></span>
-          <span class="grip-dot"></span><span class="grip-dot"></span>
-        </button>
+    {% for item in notes %}
+    <div class="swipe-row">
+      <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" class="swipe-action swipe-action-delete" onsubmit="return confirm('Delete this item?')">
+        <button type="submit">Delete</button>
+      </form>
+      <div class="swipe-content item kind-note" data-swipe>
         <div class="dot"></div>
         <div class="item-body">
           <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
@@ -126,14 +121,9 @@
             {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
           </div>
         </div>
-        <div class="item-actions">
-          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
-            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
-          </form>
-        </div>
       </div>
-      {% endfor %}
     </div>
+    {% endfor %}
     {% else %}
     <div class="empty">No notes yet.</div>
     {% endif %}
@@ -144,22 +134,19 @@
     <details>
       <summary>completed ({{ completed|length }})</summary>
       {% for item in completed %}
-      <div class="item completed">
-        <div class="dot" style="background: var(--ink-soft)"></div>
-        <div class="item-body">
-          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
-          <div class="item-meta">
-            <span>{{ item.display_completed }}</span>
-            {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+      <div class="swipe-row">
+        <form method="post" action="/view/{{ token }}/{{ item.id }}/uncomplete" class="swipe-action swipe-action-undo">
+          <button type="submit">Undo</button>
+        </form>
+        <div class="swipe-content item completed" data-swipe>
+          <div class="dot" style="background: var(--ink-soft)"></div>
+          <div class="item-body">
+            <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+            <div class="item-meta">
+              <span>{{ item.display_completed }}</span>
+              {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+            </div>
           </div>
-        </div>
-        <div class="item-actions">
-          <form method="post" action="/view/{{ token }}/{{ item.id }}/uncomplete">
-            <button type="submit" class="icon-btn" aria-label="Mark not done">&#8635;</button>
-          </form>
-          <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" onsubmit="return confirm('Delete this item?')">
-            <button type="submit" class="icon-btn del" aria-label="Delete">&times;</button>
-          </form>
         </div>
       </div>
       {% endfor %}
@@ -184,117 +171,66 @@
 
   <script>
     (function () {
-      const list = document.getElementById('notes-list');
-      if (!list) return;
-      const token = list.dataset.token;
+      const REVEAL = 84;
+      const contents = document.querySelectorAll('.swipe-content[data-swipe]');
 
-      function rows() {
-        return Array.from(list.querySelectorAll(':scope > .item[data-id]'));
-      }
+      contents.forEach((el) => {
+        let startX = 0, startY = 0, dx = 0, dragging = false, moved = false, axis = null;
 
-      async function move(itemId, afterId) {
-        await fetch(`/api/${token}/items/${itemId}/move`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ after_id: afterId }),
+        el.addEventListener('pointerdown', (e) => {
+          if (e.pointerType !== 'touch') return;
+          startX = e.clientX;
+          startY = e.clientY;
+          dx = 0;
+          moved = false;
+          axis = null;
+          dragging = true;
         });
-      }
 
-      let dragEl = null;
-      let placeholder = null;
-      let grabOffsetY = 0;
-
-      function startDrag(row, clientY) {
-        dragEl = row;
-        const rect = row.getBoundingClientRect();
-        const listRect = list.getBoundingClientRect();
-        grabOffsetY = clientY - rect.top;
-
-        placeholder = document.createElement('div');
-        placeholder.className = 'drag-placeholder';
-        placeholder.style.height = rect.height + 'px';
-        row.parentNode.insertBefore(placeholder, row.nextSibling);
-
-        row.style.width = rect.width + 'px';
-        row.style.position = 'absolute';
-        row.style.top = (rect.top - listRect.top) + 'px';
-        row.style.left = '0px';
-        row.classList.add('dragging');
-      }
-
-      function moveDrag(clientY) {
-        if (!dragEl) return;
-        const listRect = list.getBoundingClientRect();
-        dragEl.style.top = (clientY - listRect.top - grabOffsetY) + 'px';
-
-        for (const row of rows().filter((r) => r !== dragEl)) {
-          const rect = row.getBoundingClientRect();
-          if (clientY < rect.top + rect.height / 2) {
-            list.insertBefore(placeholder, row);
-            return;
+        el.addEventListener('pointermove', (e) => {
+          if (!dragging || e.pointerType !== 'touch') return;
+          const deltaX = e.clientX - startX;
+          const deltaY = e.clientY - startY;
+          if (axis === null && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
+            axis = Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y';
           }
+          if (axis !== 'x') return;
+          e.preventDefault();
+          moved = true;
+          el.classList.add('swiping');
+          dx = Math.max(-REVEAL, Math.min(0, deltaX));
+          el.style.transform = `translateX(${dx}px)`;
+        });
+
+        function endDrag() {
+          if (!dragging) return;
+          dragging = false;
+          el.classList.remove('swiping');
+          const open = dx < -REVEAL / 2;
+          el.style.transform = open ? `translateX(-${REVEAL}px)` : '';
+          el.classList.toggle('swipe-open', open);
         }
-        list.appendChild(placeholder);
-      }
 
-      async function endDrag() {
-        if (!dragEl) return;
-        list.insertBefore(dragEl, placeholder);
-        placeholder.remove();
-        dragEl.classList.remove('dragging');
-        dragEl.style.position = '';
-        dragEl.style.top = '';
-        dragEl.style.left = '';
-        dragEl.style.width = '';
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
 
-        const ordered = rows();
-        const idx = ordered.indexOf(dragEl);
-        const afterId = idx > 0 ? ordered[idx - 1].dataset.id : null;
-        const itemId = dragEl.dataset.id;
-        dragEl = null;
-
-        await move(itemId, afterId);
-        location.reload();
-      }
-
-      list.addEventListener('pointerdown', (e) => {
-        const handle = e.target.closest('.drag-handle');
-        if (!handle) return;
-        const row = handle.closest('.item');
-        if (!row) return;
-        e.preventDefault();
-        startDrag(row, e.clientY);
-
-        const onMove = (ev) => moveDrag(ev.clientY);
-        const onUp = () => {
-          document.removeEventListener('pointermove', onMove);
-          document.removeEventListener('pointerup', onUp);
-          endDrag();
-        };
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', onUp);
+        el.addEventListener('click', (e) => {
+          if (moved) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
       });
 
-      list.addEventListener('keydown', async (e) => {
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        const handle = e.target.closest('.drag-handle');
-        if (!handle) return;
-        const row = handle.closest('.item');
-        e.preventDefault();
-
-        const ordered = rows();
-        const idx = ordered.indexOf(row);
-        const targetIdx = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
-        if (targetIdx < 0 || targetIdx >= ordered.length) return;
-
-        const reordered = ordered.slice();
-        reordered.splice(idx, 1);
-        reordered.splice(targetIdx, 0, row);
-        const newIdx = reordered.indexOf(row);
-        const afterId = newIdx > 0 ? reordered[newIdx - 1].dataset.id : null;
-
-        await move(row.dataset.id, afterId);
-        location.reload();
+      // Tapping anywhere outside a swiped-open row's own row closes it.
+      document.addEventListener('pointerdown', (e) => {
+        contents.forEach((el) => {
+          const row = el.closest('.swipe-row');
+          if (el.classList.contains('swipe-open') && row && !row.contains(e.target)) {
+            el.style.transform = '';
+            el.classList.remove('swipe-open');
+          }
+        });
       });
     })();
   </script>

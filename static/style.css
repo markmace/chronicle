@@ -44,7 +44,7 @@ button, input, textarea { font-family: inherit; }
 ::selection { background: var(--indigo); color: var(--paper); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .item, .icon-btn, .fill-btn, details summary, .field { transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease; }
+  .item, .fill-btn, details summary, .field { transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease; }
 }
 
 :focus-visible {
@@ -127,54 +127,52 @@ section { margin-bottom: 30px; }
 /* Item rows — flat ledger list, hairline-divided, no card chrome         */
 /* ---------------------------------------------------------------------- */
 
-#notes-list { position: relative; }
+/* Each row is quiet by default — no visible controls. A single contextual
+   action (complete/delete/undo) sits behind it, revealed by touch swipe,
+   mouse hover, or keyboard focus — never all at once, never permanently. */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
+}
+.swipe-row:last-child { border-bottom: none; }
+.swipe-action {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 84px;
+  margin: 0;
+}
+.swipe-action button {
+  width: 100%;
+  height: 100%;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+.swipe-action-complete button { background: var(--indigo); }
+.swipe-action-delete button { background: var(--clay); }
+.swipe-action-undo button { background: var(--ink-soft); }
+.swipe-content {
+  position: relative;
+  background: var(--paper);
+  touch-action: pan-y;
+}
+.swipe-content.swiping { transition: none; }
+.swipe-content:not(.swiping) { transition: transform 0.18s ease; }
+.swipe-row:hover .swipe-content,
+.swipe-row:focus-within .swipe-content {
+  transform: translateX(-84px);
+}
+
 .item {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 13px 0;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--paper);
 }
-.item:last-child { border-bottom: none; }
-.item.dragging {
-  z-index: 10;
-  box-shadow: var(--shadow);
-  border-radius: 6px;
-  border-bottom: none;
-  opacity: 0.97;
-}
-.drag-placeholder {
-  border: 1.5px dashed var(--hairline-strong);
-  border-radius: 6px;
-  margin: 6px 0;
-  box-sizing: border-box;
-}
-.drag-handle {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 3px;
-  width: 18px;
-  height: 26px;
-  margin-top: 6px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: grab;
-  touch-action: none;
-  flex-shrink: 0;
-  align-content: center;
-  justify-items: center;
-}
-.drag-handle:active { cursor: grabbing; }
-.grip-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--hairline-strong);
-}
-.drag-handle:hover .grip-dot, .drag-handle:focus-visible .grip-dot { background: var(--ink-soft); }
 .edited-date { color: var(--ink-soft); }
 
 .dot {
@@ -242,27 +240,6 @@ section { margin-bottom: 30px; }
   text-transform: lowercase;
 }
 .completed .item-title { text-decoration: line-through; color: var(--ink-soft); }
-
-.item-actions { display: flex; gap: 2px; flex-shrink: 0; }
-.icon-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  text-decoration: none;
-}
-.icon-btn:hover { background: var(--hairline); color: var(--ink); }
-.icon-btn:active { opacity: 0.6; }
-.icon-btn.del:hover { color: var(--clay); }
 
 details > summary {
   cursor: pointer;
@@ -358,12 +335,23 @@ textarea.field:focus { border-color: var(--indigo); }
   padding: 10px 4px;
   border: none;
   background: none;
-  color: var(--clay);
+  color: var(--indigo);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
 }
 .ghost-btn:hover { text-decoration: underline; }
+.ghost-btn.danger { color: var(--clay); }
+
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 2px;
+  margin-bottom: 6px;
+}
+.edit-actions form { display: contents; }
 
 /* ---------------------------------------------------------------------- */
 /* Edit / back nav                                                        */
