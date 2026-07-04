@@ -167,18 +167,25 @@ section { margin-bottom: 30px; }
   transform: translateX(-84px);
 }
 
-.item {
+.edited-date { color: var(--ink-soft); }
+
+/* Rows show only a dot + title by default -- tap anywhere but the title to
+   reveal meta/content inline (no navigation); tap the title to open the
+   edit screen. Native <details> does the disclosure, no JS needed. */
+.item-summary {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 13px 0;
+  cursor: pointer;
+  list-style: none;
 }
-.edited-date { color: var(--ink-soft); }
+.item-summary::-webkit-details-marker { display: none; }
+.item-detail { padding: 0 0 14px 19px; }
 
 .dot {
   width: 9px;
   height: 9px;
-  margin-top: 7px;
   flex-shrink: 0;
   background: var(--ink-soft);
   border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
@@ -187,15 +194,26 @@ section { margin-bottom: 30px; }
 .kind-reminder .dot { background: var(--clay); }
 .kind-note .dot { border-radius: 50%; background: var(--ink-soft); opacity: 0.55; }
 
-.item-body { flex: 1; min-width: 0; }
 .item-title {
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.35;
   text-decoration: none;
-  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .item-title:active { opacity: 0.6; }
+.expand-chevron {
+  flex-shrink: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+details[open] > .item-summary .expand-chevron { transform: rotate(180deg); }
 .item-content {
   display: block;
   font-size: 14px;
@@ -252,6 +270,17 @@ details > summary {
 details > summary::-webkit-details-marker { display: none; }
 details > summary::before { content: "▸ "; }
 details[open] > summary::before { content: "▾ "; }
+
+/* Item rows use their own chevron (at the end, not the start) and the body
+   font/size, not the generic mono disclosure-label styling above. Matches
+   details[open] > summary::before's specificity so it wins in both states. */
+details > summary.item-summary::before,
+details[open] > summary.item-summary::before { content: none; }
+.item-summary {
+  font-family: "Zen Kaku Gothic New", -apple-system, sans-serif;
+  font-size: 16px;
+  color: var(--ink);
+}
 
 /* ---------------------------------------------------------------------- */
 /* Add form + edit screen — the one "raised paper" moment                 */

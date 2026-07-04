@@ -73,10 +73,13 @@
       <form method="post" action="/view/{{ token }}/{{ item.id }}/complete" class="swipe-action swipe-action-complete">
         <button type="submit">Done</button>
       </form>
-      <div class="swipe-content item kind-{{ item.kind }}" data-swipe>
-        <div class="dot"></div>
-        <div class="item-body">
-          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+      <details class="swipe-content item kind-{{ item.kind }}" data-swipe>
+        <summary class="item-summary">
+          <div class="dot"></div>
+          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit" onclick="event.stopPropagation()">{{ item.title }}</a>
+          <span class="expand-chevron">&#8964;</span>
+        </summary>
+        <div class="item-detail">
           <div class="item-meta">
             {% if item.display_start %}
             <span>{{ item.display_start }}{% if item.display_end %} – {{ item.display_end }}{% endif %}</span>
@@ -86,7 +89,7 @@
             {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
           </div>
         </div>
-      </div>
+      </details>
     </div>
     {% endfor %}
     {% else %}
@@ -102,10 +105,13 @@
       <form method="post" action="/view/{{ token }}/{{ item.id }}/delete" class="swipe-action swipe-action-delete" onsubmit="return confirm('Delete this item?')">
         <button type="submit">Delete</button>
       </form>
-      <div class="swipe-content item kind-note" data-swipe>
-        <div class="dot"></div>
-        <div class="item-body">
-          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+      <details class="swipe-content item kind-note" data-swipe>
+        <summary class="item-summary">
+          <div class="dot"></div>
+          <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit" onclick="event.stopPropagation()">{{ item.title }}</a>
+          <span class="expand-chevron">&#8964;</span>
+        </summary>
+        <div class="item-detail">
           {% if item.content %}
             {% if item.content|length > 200 %}
             <details class="note-toggle">
@@ -121,7 +127,7 @@
             {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
           </div>
         </div>
-      </div>
+      </details>
     </div>
     {% endfor %}
     {% else %}
@@ -138,16 +144,19 @@
         <form method="post" action="/view/{{ token }}/{{ item.id }}/uncomplete" class="swipe-action swipe-action-undo">
           <button type="submit">Undo</button>
         </form>
-        <div class="swipe-content item completed" data-swipe>
-          <div class="dot" style="background: var(--ink-soft)"></div>
-          <div class="item-body">
-            <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit">{{ item.title }}</a>
+        <details class="swipe-content item completed" data-swipe>
+          <summary class="item-summary">
+            <div class="dot" style="background: var(--ink-soft)"></div>
+            <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit" onclick="event.stopPropagation()">{{ item.title }}</a>
+            <span class="expand-chevron">&#8964;</span>
+          </summary>
+          <div class="item-detail">
             <div class="item-meta">
               <span>{{ item.display_completed }}</span>
               {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
             </div>
           </div>
-        </div>
+        </details>
       </div>
       {% endfor %}
     </details>
