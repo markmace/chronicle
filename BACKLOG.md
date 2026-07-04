@@ -14,11 +14,31 @@ at the top, then reminders from the past few days." Needs a **canonical view**
 (today's default grouping, or similar) always reachable via a simple switcher, so a
 custom view can never hide something you need to see.
 
-Deliberately not scoped or started yet — real design work before code: what a
-"view definition" looks like (a saved filter/sort/grouping recipe?), where it's
-stored (part of an item? a separate `views.json`?), how the switcher UI works, and
-how this interacts with the tag-vs-saved-view open question below. Worth its own
-planning pass rather than growing organically out of the current template.
+**Spike done 2026-07-03** (`views_service.py`, `templates/custom_view.html`,
+`?mode=custom` on `/view/{token}`) — proved the mechanism works end to end, kept
+deliberately narrow:
+
+- A group is a name + one flat rule: `tag:x`, `kind:note|reminder|event`, joined
+  by "and"/"or" (not both — no real precedence/nesting, so "X and (Y or Z)" isn't
+  expressible). Typed as text, e.g. `tag:important or kind:reminder`.
+- Stored in its own `views.json`, plain read-modify-write — no caching or
+  conflict-retry like `storage.py` has for items, since groups change far less
+  often. Would need that treatment if this graduates past spike status.
+- Canonical view got a quiet `canonical · custom` switcher; custom mode renders
+  each group as its own section (reusing the same collapsed title-only row style)
+  plus an inline "manage groups" panel to add/delete. Items un-matched by any
+  group just don't show in custom mode — canonical is the guaranteed "see
+  everything" escape hatch, via the switcher.
+- Real gaps if this becomes permanent, not just a spike: no in-place rule editing
+  (delete + recreate only), no nested boolean logic, no drag-to-reorder groups or
+  items within them (`items_service.move_note` is sitting right there if wanted),
+  no way to control which canonical items appear in *neither* view, group rows
+  don't have swipe-to-act (complete/delete) like the canonical view does.
+- Verified: rule parsing + matching (unit-level), create/list/delete against the
+  real repo, error handling for malformed rules, and that an already-running
+  dev server needs a restart to pick up `main.py` changes (Jinja templates
+  reload per-request; Python module code doesn't without `--reload` — cost me
+  a confusing debugging detour before I remembered that).
 
 ## Web UI
 
@@ -38,8 +58,8 @@ planning pass rather than growing organically out of the current template.
   wins whenever start times differ; manual order only breaks ties among
   undated reminders or items sharing the same start time. Not built yet — the
   current `reorder_note` swap logic is scoped to notes only.
-- **Sort/group by tag** as an alternate view mode — likely folds into the
-  composable-views work above rather than being its own one-off toggle.
+- ~~**Sort/group by tag** as an alternate view mode~~ — subsumed by the
+  composable-views spike above (`kind:x`/`tag:y` group rules).
 - **"Move groups"** — needs clarifying: reordering the sections themselves
   (Upcoming/Notes/Completed), or moving an item between groups (e.g. note →
   reminder)? The latter already works today via the edit screen's start/end fields;

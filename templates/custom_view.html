@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1B1916" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EDEAE2" media="(prefers-color-scheme: light)">
+<title>chronicle — custom</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-brand">
+      <span class="mark">{% include "_mark.html" %}</span>
+      <span class="wordmark">chronicle</span>
+    </div>
+    <div class="header-meta">
+      <span class="view-switch">
+        <a href="/view/{{ token }}">canonical</a> · <strong>custom</strong>
+      </span>
+    </div>
+  </header>
+
+  {% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+  <section>
+    <details class="add-form-details">
+      <summary>manage groups</summary>
+      <div class="paper-card">
+        {% if custom_groups %}
+        <div class="group-list">
+          {% for g in custom_groups %}
+          <div class="group-row">
+            <div>
+              <div class="group-name">{{ g.name }}</div>
+              <div class="group-rule mono">{{ g.rule_text }}</div>
+            </div>
+            <form method="post" action="/view/{{ token }}/groups/{{ g.id }}/delete">
+              <button type="submit" class="icon-x" aria-label="Delete group">&times;</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form class="add-form" method="post" action="/view/{{ token }}/groups">
+          <div class="field-group">
+            <input type="text" name="name" placeholder="Group name, e.g. Focus" required class="field field-title">
+          </div>
+          <div class="field-group">
+            <input type="text" name="rule" placeholder="tag:important or kind:reminder" required class="field mono">
+          </div>
+          <p class="hint">Conditions are <code>tag:value</code> or <code>kind:note|reminder|event</code>, joined by
+            "and" or "or" (not both in the same rule — that needs real precedence, which this spike doesn't have).</p>
+          <button type="submit" class="fill-btn">Add group</button>
+        </form>
+      </div>
+    </details>
+  </section>
+
+  {% for group in custom_groups %}
+  <section>
+    <div class="section-label">{{ group.name }}</div>
+    {% if group.matched %}
+    {% for item in group.matched %}
+    <details class="plain-row item kind-{{ item.kind }}">
+      <summary class="item-summary">
+        <div class="dot"></div>
+        <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit" onclick="event.stopPropagation()">{{ item.title }}</a>
+        <span class="expand-chevron">&#8964;</span>
+      </summary>
+      <div class="item-detail">
+        <div class="item-meta">
+          {% if item.kind == 'note' %}
+          <span class="edited-date">edited {{ item.display_updated }}</span>
+          {% else %}
+            {% if item.display_start %}
+            <span>{{ item.display_start }}{% if item.display_end %} – {{ item.display_end }}{% endif %}</span>
+            {% else %}
+            <span>anytime</span>
+            {% endif %}
+          {% endif %}
+          {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+        </div>
+        {% if item.kind == 'note' and item.content %}<div class="item-content">{{ item.content }}</div>{% endif %}
+      </div>
+    </details>
+    {% endfor %}
+    {% else %}
+    <div class="empty">Nothing matches "{{ group.rule_text }}" right now.</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  {% if not custom_groups %}
+  <div class="empty">No groups yet — add one above. e.g. "tag:important" to pull anything tagged important
+    into its own section, regardless of whether it's a note, reminder, or event.</div>
+  {% endif %}
+
+  <footer class="site-footer">
+    <div class="footer-brand">
+      <span class="mark">{% include "_mark.html" %}</span> chronicle
+    </div>
+    <p class="footer-copy">&copy; 2026 <a href="https://www.markmace.com">Mark Mace</a></p>
+    <form method="post" action="/logout"><button type="submit" class="logout-btn">Log out</button></form>
+  </footer>
+</body>
+</html>

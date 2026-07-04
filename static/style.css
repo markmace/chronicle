@@ -89,6 +89,40 @@ button, input, textarea { font-family: inherit; }
 }
 .header-date { text-transform: lowercase; }
 .header-stats span:not(:last-child)::after { content: " · "; }
+.view-switch {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-transform: lowercase;
+}
+.view-switch a { color: var(--ink-soft); text-decoration: underline; }
+.view-switch strong { color: var(--ink); font-weight: 600; }
+
+/* Spike: composable groups (views_service.py) */
+.plain-row { border-bottom: 1px solid var(--hairline); }
+.plain-row:last-child { border-bottom: none; }
+.group-list { margin-bottom: 16px; }
+.group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.group-name { font-size: 15px; font-weight: 500; }
+.group-rule { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.icon-x {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.icon-x:hover { color: var(--clay); }
 
 /* ---------------------------------------------------------------------- */
 /* Ledger sections                                                        */

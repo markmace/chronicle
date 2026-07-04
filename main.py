@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import items_service
+import views_service
 import models
 from auth import safe_equal, session_token
 from mcp_server import mcp
@@ -197,16 +198,37 @@ def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
 
 
 @app.get("/view/{token}", response_class=HTMLResponse)
-async def view_items(request: Request, token: str, error: str | None = None):
+async def view_items(request: Request, token: str, error: str | None = None, mode: str = "canonical"):
     """Mobile-first view of all items, with a quick-add form and per-item
     complete/uncomplete/delete/edit actions. Reachable either via the URL path
-    token or a logged-in session cookie (see /login)."""
+    token or a logged-in session cookie (see /login).
+
+    mode="custom" switches to the SPIKE composable-groups view (see
+    views_service.py) -- the canonical grouping here is always reachable via
+    the switcher, so a custom view can never hide something you need to see.
+    """
     _require_view_access(request, token)
 
     items = await items_service.list_items(include_completed=True)
-
     active = [i for i in items if not i.get("completed_at")]
     completed = [i for i in items if i.get("completed_at")]
+
+    if mode == "custom":
+        groups = await views_service.list_groups()
+        custom_groups = []
+        for g in groups:
+            matched = [i for i in active if views_service.item_matches(i, g)]
+            matched.sort(key=lambda i: i.get("start") or "", reverse=False)
+            custom_groups.append({
+                "id": g["id"],
+                "name": g["name"],
+                "rule_text": views_service.rule_text(g),
+                "matched": [_for_display(i) for i in matched],
+            })
+        return templates.TemplateResponse(
+            request, "custom_view.html",
+            {"token": token, "error": error, "custom_groups": custom_groups},
+        )
 
     upcoming = [i for i in active if models.item_kind(i) in ("event", "reminder")]
     upcoming.sort(key=lambda i: (i["start"] is None, i["start"] or ""))
@@ -227,6 +249,23 @@ async def view_items(request: Request, token: str, error: str | None = None):
             "completed": [_for_display(i) for i in completed],
         },
     )
+
+
+@app.post("/view/{token}/groups")
+async def create_group_form(request: Request, token: str, name: str = Form(...), rule: str = Form(...)):
+    _require_view_access(request, token)
+    try:
+        await views_service.create_group(name, rule)
+    except views_service.RuleError as e:
+        return RedirectResponse(f"/view/{token}?mode=custom&error={quote(str(e))}", status_code=303)
+    return RedirectResponse(f"/view/{token}?mode=custom", status_code=303)
+
+
+@app.post("/view/{token}/groups/{group_id}/delete")
+async def delete_group_form(request: Request, token: str, group_id: str):
+    _require_view_access(request, token)
+    await views_service.delete_group(group_id)
+    return RedirectResponse(f"/view/{token}?mode=custom", status_code=303)
 
 
 @app.post("/view/{token}/create")
