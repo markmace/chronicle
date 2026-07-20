@@ -18,6 +18,13 @@ custom view can never hide something you need to see.
 `?mode=custom` on `/view/{token}`) — proved the mechanism works end to end, kept
 deliberately narrow:
 
+**Default mode graduated 2026-07-19** — `views_service.get_default_mode()`/
+`set_default_mode()` persist which mode (`canonical`/`custom`) `/view/{token}`
+falls back to when no `?mode=` is given, stored alongside groups in
+`views.json`. Both templates got a small "set default" affordance next to
+whichever mode isn't currently default. This is the one piece that's no
+longer spike-status — everything else below is still open.
+
 - A group is a name + one flat rule: `tag:x`, `kind:note|reminder|event`, joined
   by "and"/"or" (not both — no real precedence/nesting, so "X and (Y or Z)" isn't
   expressible). Typed as text, e.g. `tag:important or kind:reminder`.
@@ -39,6 +46,55 @@ deliberately narrow:
   dev server needs a restart to pick up `main.py` changes (Jinja templates
   reload per-request; Python module code doesn't without `--reload` — cost me
   a confusing debugging detour before I remembered that).
+
+## Google Calendar integration (2026-07-19)
+
+Mark's framing: Chronicle should be a real one-stop-shop across notes,
+reminders, and calendar, not three siloed apps. First step: pull Google
+Calendar events in, read-only.
+
+**Done 2026-07-19** (`google_calendar_service.py`) — one-way overlay, fetched
+live at read time and merged into `items_service.list_items()`/`get()`, never
+written to `items.json`. Deliberately narrow:
+
+- Events shape into item dicts with `start`/`end` set (so `models.item_kind`
+  derives `event` the same as anything native), `id` prefixed `gcal:`,
+  `source: "google_calendar"`. Fetch window: ~yesterday through +30 days,
+  across whichever calendar ids are in `GOOGLE_CALENDAR_IDS`, cached ~60s.
+  No-ops cleanly (`[]`) whenever unconfigured or on any API error — never
+  breaks the rest of the app.
+- Mutation (`update`/`complete`/`uncomplete`/`delete`) on a `gcal:` id raises
+  a clean `ValidationError` ("edit them in Google Calendar instead") in
+  `items_service.py`, propagated as a 422 on the JSON API, a graceful
+  `{"ok": false}` from MCP tools, and a redirect-with-error from the web
+  forms — checked all four paths don't 500.
+- Web view: calendar items render as non-interactive rows (no edit link, no
+  swipe-to-complete) in both canonical Upcoming and any custom-view group
+  that happens to match them (e.g. a `kind:event` rule) — reuses the
+  already-existing `.plain-row`/`.tag` styling rather than new CSS. Upcoming
+  additionally filters out calendar events that have already ended, since
+  unlike reminders they can't be marked complete to clear themselves.
+- One-time local OAuth (`scripts/google_calendar_auth.py`) gets a refresh
+  token via the loopback flow and prints it plus your calendar list — the
+  server itself never runs an OAuth web flow or stores tokens anywhere but a
+  Fly secret.
+
+**Explicitly out of scope for this pass** — two-way sync/write-back (create
+or edit an event from Chronicle that shows up in real Google Calendar),
+dedup between a Chronicle-native item and a calendar event describing the
+same thing, recurring-event expansion beyond what the Calendar API's
+`singleEvents=true` already flattens, multi-account support, and Apple
+Calendar/iCloud (CalDAV) — Mark wants this eventually too, but it needs its
+own credential flow, no existing OAuth/API access set up for it yet.
+
+**Verified:** event shaping (unit-level, timed + all-day + cancelled),
+`summary()` now exposes `source` so MCP/JSON API callers can tell a
+calendar item apart from a native one before trying to mutate it, dev server
+runs fine with Google env vars entirely unset (proves the no-op-when-
+unconfigured claim), all four mutation surfaces fail cleanly on a `gcal:` id.
+**Not yet verified against a real Google account** — Mark still needs to run
+`scripts/google_calendar_auth.py` with real OAuth client credentials and
+confirm live events render correctly end to end.
 
 ## Web UI
 

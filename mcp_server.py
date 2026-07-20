@@ -107,7 +107,7 @@ async def complete_item(id: str) -> str:
     """Sets completed_at=now. Idempotent — safe to call on an already-completed item."""
     try:
         item, already = await items_service.complete(id)
-    except models.ItemNotFoundError as e:
+    except (models.ItemNotFoundError, models.ValidationError) as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "item": item, "already_completed": already})
 
@@ -117,7 +117,7 @@ async def uncomplete_item(id: str) -> str:
     """Clears completed_at. Idempotent, symmetric to complete_item."""
     try:
         item, already = await items_service.uncomplete(id)
-    except models.ItemNotFoundError as e:
+    except (models.ItemNotFoundError, models.ValidationError) as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "item": item, "already_uncompleted": already})
 
@@ -135,7 +135,7 @@ async def delete_item(id: str) -> str:
     """
     try:
         deleted = await items_service.delete(id)
-    except models.ItemNotFoundError as e:
+    except (models.ItemNotFoundError, models.ValidationError) as e:
         return json.dumps({"ok": False, "error": str(e)})
     return json.dumps({"ok": True, "id": id, "title": deleted["title"]})
 

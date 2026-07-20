@@ -97,6 +97,17 @@ button, input, textarea { font-family: inherit; }
 }
 .view-switch a { color: var(--ink-soft); text-decoration: underline; }
 .view-switch strong { color: var(--ink); font-weight: 600; }
+.inline-form { display: inline; }
+.link-btn {
+  font: inherit;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--ink); }
 
 /* Spike: composable groups (views_service.py) */
 .plain-row { border-bottom: 1px solid var(--hairline); }

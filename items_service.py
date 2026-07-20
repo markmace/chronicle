@@ -4,8 +4,16 @@ thing instead of each re-implementing their own mutator closures."""
 
 import time
 
+import google_calendar_service
 import models
 import storage
+
+
+def _reject_calendar_item(item_id: str) -> None:
+    if item_id.startswith("gcal:"):
+        raise models.ValidationError(
+            "Google Calendar events are read-only in Chronicle — edit them in Google Calendar instead."
+        )
 
 
 def summary(item: dict) -> dict:
@@ -17,6 +25,7 @@ def summary(item: dict) -> dict:
         "end": item["end"],
         "completed_at": item["completed_at"],
         "kind": models.item_kind(item),
+        "source": item.get("source", "chronicle"),
     }
 
 
@@ -41,9 +50,16 @@ async def list_items(
     start_after: str | None = None,
     start_before: str | None = None,
     include_completed: bool = False,
+    include_calendar: bool = True,
 ) -> list[dict]:
-    """May raise models.ValidationError (bad start_after/start_before)."""
+    """May raise models.ValidationError (bad start_after/start_before).
+
+    include_calendar merges in read-only Google Calendar events (see
+    google_calendar_service.py) -- a no-op list if that isn't configured.
+    """
     items, _ = await storage.read_items()
+    if include_calendar:
+        items = items + await google_calendar_service.list_upcoming_events()
 
     if tag:
         tag = tag.strip().lower()
@@ -73,6 +89,11 @@ async def list_items(
 
 async def get(item_id: str) -> dict:
     """May raise models.ItemNotFoundError."""
+    if item_id.startswith("gcal:"):
+        event = await google_calendar_service.find(item_id)
+        if event is None:
+            raise models.ItemNotFoundError(f"No item with id '{item_id}'.")
+        return event
     items, _ = await storage.read_items()
     return models.find(items, item_id)
 
@@ -88,6 +109,7 @@ async def update(
     clear_end: bool = False,
 ) -> dict:
     """May raise models.ItemNotFoundError or models.ValidationError."""
+    _reject_calendar_item(item_id)
 
     def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
         item = models.find(items, item_id)
@@ -110,7 +132,9 @@ async def update(
 
 
 async def _set_completed(item_id: str, completed_at: str | None) -> tuple[dict, bool]:
-    """Returns (item, already_in_that_state). May raise models.ItemNotFoundError."""
+    """Returns (item, already_in_that_state). May raise models.ItemNotFoundError
+    or models.ValidationError."""
+    _reject_calendar_item(item_id)
     items, _ = await storage.read_items()
     item = models.find(items, item_id)
     already = bool(item.get("completed_at")) == bool(completed_at)
@@ -143,7 +167,9 @@ async def uncomplete(item_id: str) -> tuple[dict, bool]:
 
 
 async def delete(item_id: str) -> dict:
-    """Returns the deleted item. May raise models.ItemNotFoundError."""
+    """Returns the deleted item. May raise models.ItemNotFoundError or
+    models.ValidationError."""
+    _reject_calendar_item(item_id)
 
     def _mutator(items: list[dict]) -> tuple[list[dict], dict]:
         item = models.find(items, item_id)

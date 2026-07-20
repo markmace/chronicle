@@ -198,22 +198,27 @@ def _local_to_utc_iso(value: str, tz_offset_minutes: int) -> str | None:
 
 
 @app.get("/view/{token}", response_class=HTMLResponse)
-async def view_items(request: Request, token: str, error: str | None = None, mode: str = "canonical"):
+async def view_items(request: Request, token: str, error: str | None = None, mode: str | None = None):
     """Mobile-first view of all items, with a quick-add form and per-item
     complete/uncomplete/delete/edit actions. Reachable either via the URL path
     token or a logged-in session cookie (see /login).
 
-    mode="custom" switches to the SPIKE composable-groups view (see
-    views_service.py) -- the canonical grouping here is always reachable via
-    the switcher, so a custom view can never hide something you need to see.
+    mode, if omitted, falls back to the persisted default (see
+    views_service.set_default_mode) -- so once you've set up groups, that's
+    just what you see. mode="custom" switches to the composable-groups view
+    (see views_service.py) -- canonical stays one tap away via the switcher,
+    so a custom view can never hide something you need to see.
     """
     _require_view_access(request, token)
+
+    default_mode = await views_service.get_default_mode()
+    effective_mode = mode or default_mode
 
     items = await items_service.list_items(include_completed=True)
     active = [i for i in items if not i.get("completed_at")]
     completed = [i for i in items if i.get("completed_at")]
 
-    if mode == "custom":
+    if effective_mode == "custom":
         groups = await views_service.list_groups()
         custom_groups = []
         for g in groups:
@@ -227,10 +232,18 @@ async def view_items(request: Request, token: str, error: str | None = None, mod
             })
         return templates.TemplateResponse(
             request, "custom_view.html",
-            {"token": token, "error": error, "custom_groups": custom_groups},
+            {"token": token, "error": error, "custom_groups": custom_groups, "default_mode": default_mode},
         )
 
-    upcoming = [i for i in active if models.item_kind(i) in ("event", "reminder")]
+    now_iso = models.now_iso()
+    upcoming = [
+        i for i in active
+        if models.item_kind(i) in ("event", "reminder")
+        # A Google Calendar event can't be completed like a reminder can, so
+        # without this it lingers atop Upcoming for the rest of the fetch
+        # window after it ends.
+        and not (i.get("source") == "google_calendar" and (i.get("end") or i["start"]) < now_iso)
+    ]
     upcoming.sort(key=lambda i: (i["start"] is None, i["start"] or ""))
 
     notes = [i for i in active if models.item_kind(i) == "note"]
@@ -247,8 +260,19 @@ async def view_items(request: Request, token: str, error: str | None = None, mod
             "upcoming": [_for_display(i) for i in upcoming],
             "notes": [_for_display(i) for i in notes],
             "completed": [_for_display(i) for i in completed],
+            "default_mode": default_mode,
         },
     )
+
+
+@app.post("/view/{token}/default")
+async def set_default_view_form(request: Request, token: str, mode: str = Form(...)):
+    _require_view_access(request, token)
+    try:
+        await views_service.set_default_mode(mode)
+    except views_service.RuleError as e:
+        return RedirectResponse(f"/view/{token}?mode={mode}&error={quote(str(e))}", status_code=303)
+    return RedirectResponse(f"/view/{token}?mode={mode}", status_code=303)
 
 
 @app.post("/view/{token}/groups")
@@ -296,6 +320,9 @@ async def create_item_form(
 @app.get("/view/{token}/{item_id}/edit", response_class=HTMLResponse)
 async def edit_item_form(request: Request, token: str, item_id: str):
     _require_view_access(request, token)
+    if item_id.startswith("gcal:"):
+        error = "Google Calendar events are read-only in Chronicle — edit them in Google Calendar instead."
+        return RedirectResponse(f"/view/{token}?error={quote(error)}", status_code=303)
     try:
         item = await items_service.get(item_id)
     except models.ItemNotFoundError as e:
@@ -362,7 +389,7 @@ async def complete_item_form(request: Request, token: str, item_id: str):
     _require_view_access(request, token)
     try:
         await items_service.complete(item_id)
-    except models.ItemNotFoundError:
+    except (models.ItemNotFoundError, models.ValidationError):
         pass
     return RedirectResponse(f"/view/{token}", status_code=303)
 
@@ -372,7 +399,7 @@ async def uncomplete_item_form(request: Request, token: str, item_id: str):
     _require_view_access(request, token)
     try:
         await items_service.uncomplete(item_id)
-    except models.ItemNotFoundError:
+    except (models.ItemNotFoundError, models.ValidationError):
         pass
     return RedirectResponse(f"/view/{token}", status_code=303)
 
@@ -382,7 +409,7 @@ async def delete_item_form(request: Request, token: str, item_id: str):
     _require_view_access(request, token)
     try:
         await items_service.delete(item_id)
-    except models.ItemNotFoundError:
+    except (models.ItemNotFoundError, models.ValidationError):
         pass
     return RedirectResponse(f"/view/{token}", status_code=303)
 
@@ -479,6 +506,8 @@ async def api_complete_item(token: str, item_id: str):
         item, already = await items_service.complete(item_id)
     except models.ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return {"item": item, "already_completed": already}
 
 
@@ -489,6 +518,8 @@ async def api_uncomplete_item(token: str, item_id: str):
         item, already = await items_service.uncomplete(item_id)
     except models.ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return {"item": item, "already_uncompleted": already}
 
 
@@ -499,6 +530,8 @@ async def api_delete_item(token: str, item_id: str):
         deleted = await items_service.delete(item_id)
     except models.ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except models.ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": item_id, "title": deleted["title"]}
 
 

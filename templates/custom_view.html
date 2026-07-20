@@ -22,7 +22,7 @@
     </div>
     <div class="header-meta">
       <span class="view-switch">
-        <a href="/view/{{ token }}">canonical</a> · <strong>custom</strong>
+        <a href="/view/{{ token }}">canonical</a> · <strong>custom</strong>{% if default_mode != 'custom' %} <form method="post" action="/view/{{ token }}/default" class="inline-form"><input type="hidden" name="mode" value="custom"><button type="submit" class="link-btn">set default</button></form>{% endif %}
       </span>
     </div>
   </header>
@@ -71,7 +71,11 @@
     <details class="plain-row item kind-{{ item.kind }}">
       <summary class="item-summary">
         <div class="dot"></div>
+        {% if item.source == 'google_calendar' %}
+        <span class="item-title">{{ item.title }}</span>
+        {% else %}
         <a class="item-title" href="/view/{{ token }}/{{ item.id }}/edit" onclick="event.stopPropagation()">{{ item.title }}</a>
+        {% endif %}
         <span class="expand-chevron">&#8964;</span>
       </summary>
       <div class="item-detail">
@@ -86,6 +90,7 @@
             {% endif %}
           {% endif %}
           {% for t in item.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+          {% if item.source == 'google_calendar' %}<span class="tag">{{ item.calendar_name }}</span>{% endif %}
         </div>
         {% if item.kind == 'note' and item.content %}<div class="item-content">{{ item.content }}</div>{% endif %}
       </div>

@@ -37,12 +37,27 @@ async def _read() -> tuple[dict, str | None]:
         raise
     data = json.loads(content) if content.strip() else {"groups": []}
     data.setdefault("groups", [])
+    data.setdefault("default_mode", "canonical")
     return data, sha
 
 
 async def list_groups() -> list[dict]:
     data, _ = await _read()
     return data["groups"]
+
+
+async def get_default_mode() -> str:
+    data, _ = await _read()
+    return data["default_mode"]
+
+
+async def set_default_mode(mode: str) -> None:
+    if mode not in ("canonical", "custom"):
+        raise RuleError("mode must be 'canonical' or 'custom'.")
+    data, sha = await _read()
+    data["default_mode"] = mode
+    content = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    await github_store.write_file(VIEWS_PATH, content, f"Set default view: {mode}", sha)
 
 
 async def create_group(name: str, rule_text: str) -> dict:

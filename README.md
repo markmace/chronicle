@@ -53,10 +53,12 @@ flowchart LR
     M["Chronicle server<br/>on Fly.io"]
     C["claude.ai"]
     V["/view — mobile-first page"]
+    GC["Google Calendar API"]
 
     M <-->|REST API| G
     M <-->|MCP| C
     M <--> V
+    GC -.->|read-only| M
 ```
 
 All items live as one JSON array (`items.json`) in a private GitHub repo — free
@@ -73,6 +75,10 @@ git commit.
 | `update_item(id, ...)` | Partial patch; `clear_start`/`clear_end` to remove time fields |
 | `complete_item(id)` / `uncomplete_item(id)` | Toggle done state, idempotent |
 | `delete_item(id)` | Destructive — Claude always confirms first |
+
+`list_items`/`get_item` also surface read-only Google Calendar events when configured
+(see below) — `source: "google_calendar"` in the summary, `gcal:`-prefixed id. Mutating
+one of those returns a clean error instead of a 404/500.
 
 ### The `/view` page
 
@@ -92,6 +98,18 @@ tools and the HTML forms, as JSON. Not consumed by the current page (which still
 uses plain form POSTs), but there so a future richer web app or native app has a
 stable contract to build on without another rewrite of the business logic — which
 all three surfaces (MCP, HTML forms, JSON API) share via `items_service.py`.
+
+### Google Calendar (optional, read-only)
+
+If configured, events from your Google Calendars are merged into the same
+Upcoming list, MCP `list_items`/`get_item`, and JSON API — live at read time via
+`google_calendar_service.py`, never written to `items.json`. No two-way sync: you
+can't complete, edit, or delete a calendar-sourced item from Chronicle (it'll
+tell you to use Google Calendar instead). Entirely optional — everything else
+works exactly the same without it. Setup: see step 6 below.
+
+Env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_REFRESH_TOKEN`,
+`GOOGLE_CALENDAR_IDS` (comma-separated calendar ids to pull from).
 
 ---
 
@@ -151,6 +169,19 @@ you for ~400 days (Chrome's max), so this is normally a one-time thing per devic
 Bookmark the bare domain (`https://<your-app>.fly.dev/`) — that's the friendly
 entry point now.
 
+### 6. (Optional) Connect Google Calendar
+
+1. In [Google Cloud Console](https://console.cloud.google.com), enable the
+   **Google Calendar API**, then set up an **OAuth consent screen** (User type
+   External, Publishing status Testing, add your own email as a test user — no
+   Google review needed for personal use), then create an **OAuth client ID**
+   of type **Desktop app**. Note the client ID/secret.
+2. `export GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...` then
+   `uv run python scripts/google_calendar_auth.py` — opens your browser for
+   consent, then prints your calendars and the `fly secrets set` command to run.
+3. Run the printed command (fill in which calendar ids you want), then
+   `fly deploy`.
+
 ## Local development
 
 ```bash
@@ -164,24 +195,32 @@ uv run uvicorn main:app --reload --port 8080
 the real data repo (creates a note/reminder/event tagged `smoke-test`, checks
 filtering, completes one, then deletes everything it created).
 
+The four `GOOGLE_*` vars (see "Connect Google Calendar" above) can go in `.dev.env`
+too, to test the calendar merge locally — the app runs fine without them, calendar
+events just don't appear.
+
 ## File layout
 
 ```
-main.py          — FastAPI app: MCP mount, /healthz, /view + /view/.../edit pages, JSON API
-mcp_server.py    — the 7 MCP tools (thin wrappers over items_service)
-items_service.py — shared create/list/get/update/complete/delete logic
-models.py        — item schema, validation, derived kind
-storage.py       — items.json read/write, retry-once-on-conflict mutation helper
-github_store.py  — thin GitHub Contents API client (generic file read/write)
-auth.py          — constant-time token comparison
-templates/items.html     — the list view
-templates/edit_item.html — the single-item edit screen
-templates/login.html     — password login screen
-templates/_mark.html     — the ensō ink-mark, included wherever the logo appears
-static/style.css  — shared styling for all pages
-static/favicon.svg — browser tab icon (same mark)
-scripts/smoke_test.py  — dev-only, exercises storage/models against the real repo
-scripts/screenshot.py  — regenerates docs/screenshots/ from a local dev server
+main.py                     — FastAPI app: MCP mount, /healthz, /view + /view/.../edit pages, JSON API
+mcp_server.py                — the 7 MCP tools (thin wrappers over items_service)
+items_service.py             — shared create/list/get/update/complete/delete logic
+google_calendar_service.py   — read-only Google Calendar fetch + merge, no-ops if unconfigured
+views_service.py             — composable-groups + persisted default view mode (views.json)
+models.py                    — item schema, validation, derived kind
+storage.py                   — items.json read/write, retry-once-on-conflict mutation helper
+github_store.py               — thin GitHub Contents API client (generic file read/write)
+auth.py                       — constant-time token comparison
+templates/items.html          — the canonical list view
+templates/custom_view.html    — the composable-groups view
+templates/edit_item.html      — the single-item edit screen
+templates/login.html          — password login screen
+templates/_mark.html          — the ensō ink-mark, included wherever the logo appears
+static/style.css              — shared styling for all pages
+static/favicon.svg            — browser tab icon (same mark)
+scripts/smoke_test.py         — dev-only, exercises storage/models against the real repo
+scripts/screenshot.py         — regenerates docs/screenshots/ from a local dev server
+scripts/google_calendar_auth.py — one-time local OAuth flow, see "Connect Google Calendar" above
 Dockerfile
 fly.toml
 ```

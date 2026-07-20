@@ -30,7 +30,10 @@
       </span>
       {% endif %}
     </div>
-    <div class="view-switch"><strong>canonical</strong> · <a href="/view/{{ token }}?mode=custom">custom</a></div>
+    <div class="view-switch">
+      <strong>canonical</strong>{% if default_mode != 'canonical' %} <form method="post" action="/view/{{ token }}/default" class="inline-form"><input type="hidden" name="mode" value="canonical"><button type="submit" class="link-btn">set default</button></form>{% endif %}
+      · <a href="/view/{{ token }}?mode=custom">custom</a>
+    </div>
   </header>
 
   <section>
@@ -70,6 +73,25 @@
     <div class="section-label">upcoming</div>
     {% if upcoming %}
     {% for item in upcoming %}
+    {% if item.source == 'google_calendar' %}
+    <details class="plain-row item kind-{{ item.kind }}">
+      <summary class="item-summary">
+        <div class="dot"></div>
+        <span class="item-title">{{ item.title }}</span>
+        <span class="expand-chevron">&#8964;</span>
+      </summary>
+      <div class="item-detail">
+        <div class="item-meta">
+          {% if item.display_start %}
+          <span>{{ item.display_start }}{% if item.display_end %} – {{ item.display_end }}{% endif %}</span>
+          {% else %}
+          <span>anytime</span>
+          {% endif %}
+          <span class="tag">{{ item.calendar_name }}</span>
+        </div>
+      </div>
+    </details>
+    {% else %}
     <div class="swipe-row">
       <form method="post" action="/view/{{ token }}/{{ item.id }}/complete" class="swipe-action swipe-action-complete">
         <button type="submit">Done</button>
@@ -92,6 +114,7 @@
         </div>
       </details>
     </div>
+    {% endif %}
     {% endfor %}
     {% else %}
     <div class="empty">Nothing scheduled.</div>
